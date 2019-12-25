@@ -6,6 +6,8 @@ PACT is a tool designed to give the user a tighter control over their system by 
 
 # [Download <img src="https://github.com/sas41/ProcessAffinityControlTool/blob/master/icon/PACT%20Logo.png?raw=true" width="48">](https://github.com/sas41/ProcessAffinityControlTool/releases)
 
+If you find this tool helpful and wish to donate, you can do so here: https://www.paypal.me/sas41
+
 # Usage:
 
     add
