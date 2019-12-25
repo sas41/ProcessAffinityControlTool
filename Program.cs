@@ -36,7 +36,7 @@ namespace ProcessAffinityControlTool
                 List<string> arguments = command.Split().ToList();
                 try
                 {
-                    if (arguments[0] == "add")
+                    if (arguments[0] == "add" || arguments[0] == "update")
                     {
                         string exeName = arguments[1].Replace(".exe", "");
                         int priority = int.Parse(arguments[2]);

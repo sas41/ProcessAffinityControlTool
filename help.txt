@@ -1,7 +1,8 @@
 PACT v1.0 Commands:
-    add
-        Adds an exception for a program, to run with a
-        different core affinity and priority.
+    add or update
+        Adds or updates an exception for a program,
+        to run with a different core affinity and
+        priority.
         
         This works best when used for games to run on their
         own cores/threads while the rest of the programs
