@@ -12,12 +12,12 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
 
     add
         Adds an exception for a program, to run with a
-		different core affinity and priority.
-		
+        different core affinity and priority.
+        
         This works best when used for games to run on their
-		own cores/threads while the rest of the programs
-		run on the defaults.
-		
+        own cores/threads while the rest of the programs
+        run on the defaults.
+        
         Syntax:
             add [exe_name] [priority] [cores]
                 Priority:
@@ -31,35 +31,35 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
                     Can be from 0 to howevermany you have.
         Example:
             add firefox 2 0 3
-			
+            
             This will ensure every instance of [firefox]
-			runs with [2-Normal] priority on cores [0 & 3].
+            runs with [2-Normal] priority on cores [0 & 3].
 -----------------------------------------------------------
     remove or rem
         Removes a program from the exceptions list.
-		
+        
         Syntax:
             remove [exe_name]
-			
+            
         Example:
             remove firefox
 -----------------------------------------------------------
     default_cores or dc
-	    Sets the default cores for all non-exception
-		programs.
-		
+        Sets the default cores for all non-exception
+        programs.
+        
         Syntax:
             default_cores [cores]
                 Cores:
                     Can be from 0 to howevermany you have.
-			
+            
         Example:
             default_cores 0 1 2 5
 -----------------------------------------------------------
     default_priority or dp
-	    Sets the default priority for all non-exception
-		programs.
-		
+        Sets the default priority for all non-exception
+        programs.
+        
         Syntax:
             default_priority [priority]
                 Priority:
@@ -69,7 +69,7 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
                     3: Above Normal
                     4: High
                     5: Real Time (Not Recommended)
-			
+            
         Example:
             default_priority 1
 -----------------------------------------------------------
@@ -137,22 +137,23 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
             toggle
 -----------------------------------------------------------
     apply
-	    Applies the changes made since 1st run or
-		last [apply].
-		
+        Applies changes immediately and resets timer.
+        This is not required, as PACT will usually
+        apply changes made on it's next scan.
+        
         Syntax:
             apply 
-			
+            
         Example:
             apply
 -----------------------------------------------------------
     save
-	    Saves the config to executable directory.
-		On next run, this config will be applied.
-		
+        Saves the config to executable directory.
+        On next run, this config will be applied.
+        
         Syntax:
             save 
-			
+            
         Example:
             save
 -----------------------------------------------------------
@@ -166,4 +167,4 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
             
         Example:
             exit
-			
+            
