@@ -122,8 +122,8 @@ namespace ProcessAffinityControlTool
             }
             else
             {
-                mask = (IntPtr)Config.Default.AffinityMask;
-                priority = Config.Default.Priority;
+                mask = (IntPtr)Config.DefaultConfig.AffinityMask;
+                priority = Config.DefaultConfig.Priority;
             }
 
             // Set Process Affinity

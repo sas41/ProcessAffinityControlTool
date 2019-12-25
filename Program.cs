@@ -23,6 +23,7 @@ namespace ProcessAffinityControlTool
             conf = ReadConfig();
             pausedConf = new PACTConfig();
 
+            pow.Config = conf;
             pow.SetTimer();
 
 
@@ -70,11 +71,11 @@ namespace ProcessAffinityControlTool
                     else if (arguments[0] == "default_cores" || arguments[0] == "dc")
                     {
                         List<int> cores = arguments.Skip(1).Select(x => int.Parse(x)).ToList();
-                        conf.Default = new ProcessConfig(cores, conf.Default.PriorityNumber);
+                        conf.DefaultConfig = new ProcessConfig(cores, conf.DefaultConfig.PriorityNumber);
                     }
                     else if (arguments[0] == "default_priority" || arguments[0] == "dp")
                     {
-                        conf.Default = new ProcessConfig(conf.Default.CoreList, int.Parse(arguments[1]));
+                        conf.DefaultConfig = new ProcessConfig(conf.DefaultConfig.CoreList, int.Parse(arguments[1]));
                     }
                     else if (arguments[0] == "scan_interval" || arguments[0] == "si")
                     {
@@ -106,7 +107,7 @@ namespace ProcessAffinityControlTool
                     else if (arguments[0] == "show_defaults" || arguments[0] == "sd")
                     {
                         Console.WriteLine("Defaults:");
-                        Console.WriteLine(conf.Default);
+                        Console.WriteLine(conf.DefaultConfig);
                     }
                     else if (arguments[0] == "show_exceptions" || arguments[0] == "se")
                     {
@@ -178,11 +179,19 @@ namespace ProcessAffinityControlTool
         static PACTConfig ReadConfig()
         {
             string path = AppDomain.CurrentDomain.BaseDirectory;
-            string configPath = path + "/config.json";
+            string configPath = path + "config.json";
+            Console.WriteLine();
+            Console.WriteLine($"Looking for config at: [{configPath}]...");
             if (File.Exists(configPath))
             {
                 string json = File.ReadAllText(configPath);
-                return JsonConvert.DeserializeObject<PACTConfig>(json);
+                Console.WriteLine("Config found!");
+                PACTConfig tconf = JsonConvert.DeserializeObject<PACTConfig>(json);
+                return tconf;
+            }
+            else
+            {
+                Console.WriteLine("Config not found, using initial defaults...");
             }
 
             return new PACTConfig();
@@ -192,14 +201,14 @@ namespace ProcessAffinityControlTool
         {
             string json = JsonConvert.SerializeObject(conf, Formatting.Indented);
             string path = AppDomain.CurrentDomain.BaseDirectory;
-            string configPath = path + "/config.json";
+            string configPath = path + "config.json";
             File.WriteAllText(configPath, json);
         }
 
         static void ShowHelp()
         {
             string path = AppDomain.CurrentDomain.BaseDirectory;
-            string textPath = path + "/help.txt";
+            string textPath = path + "help.txt";
             if (File.Exists(textPath))
             {
                 string text = File.ReadAllText(textPath);

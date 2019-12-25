@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -8,10 +9,14 @@ namespace ProcessAffinityControlTool
 {
     class ProcessConfig
     {
+        [JsonProperty]
         public ProcessPriorityClass Priority { get; set; }
+        [JsonProperty]
         public long AffinityMask { get; set; }
 
+        [JsonProperty]
         public List<int> CoreList { get; private set; }
+        [JsonProperty]
         public int PriorityNumber { get; private set; }
 
         public ProcessConfig()

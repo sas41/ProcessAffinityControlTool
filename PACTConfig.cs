@@ -3,26 +3,40 @@ using System.Text;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Newtonsoft.Json;
 
 namespace ProcessAffinityControlTool
 {
     class PACTConfig
     {
-        // Process name -> Affinity Mask
+        [JsonProperty]
         public Dictionary<string, ProcessConfig> ProcessConfigs { get; set; }
-
-        public ProcessConfig Default { get; set; }
+        [JsonProperty]
+        public ProcessConfig DefaultConfig { get; set; }
+        [JsonProperty]
         public int ScanInterval { get; set; }
+        [JsonProperty]
         public int AggressiveScanInterval { get; set; }
+        [JsonProperty]
         public bool ForceAggressiveScan { get; set; }
 
-        public PACTConfig()
+        public PACTConfig(Dictionary<string, ProcessConfig> processConfigs = null, ProcessConfig defaultConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 3, bool forceAggressiveScan = false)
         {
-            ProcessConfigs = new Dictionary<string, ProcessConfig>();
-            Default = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList(), 2);
-            ScanInterval = 3000;
-            AggressiveScanInterval = 3;
-            ForceAggressiveScan = false;
+            ProcessConfigs = processConfigs;
+            if (processConfigs == null)
+            {
+                ProcessConfigs = new Dictionary<string, ProcessConfig>();
+            }
+
+            DefaultConfig = defaultConfig;
+            if (defaultConfig == null)
+            {
+                DefaultConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList(), 2);
+            }
+
+            ScanInterval = scanInterval;
+            AggressiveScanInterval = aggressiveScanInterval;
+            ForceAggressiveScan = forceAggressiveScan;
         }
 
     }
