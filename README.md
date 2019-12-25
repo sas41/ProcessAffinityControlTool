@@ -10,9 +10,10 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
 
 # Usage:
 
-    add
-        Adds an exception for a program, to run with a
-        different core affinity and priority.
+    add or update
+        Adds or updates an exception for a program,
+        to run with a different core affinity and
+        priority.
         
         This works best when used for games to run on their
         own cores/threads while the rest of the programs
