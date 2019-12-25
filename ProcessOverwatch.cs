@@ -115,10 +115,10 @@ namespace ProcessAffinityControlTool
         {
             IntPtr mask;
             ProcessPriorityClass priority;
-            if (Config.ProcessConfigs.ContainsKey(process.ProcessName))
+            if (Config.ProcessConfigs.ContainsKey(process.ProcessName.ToLower()))
             {
-                mask = (IntPtr)Config.ProcessConfigs[process.ProcessName].AffinityMask;
-                priority = Config.ProcessConfigs[process.ProcessName].Priority;
+                mask = (IntPtr)Config.ProcessConfigs[process.ProcessName.ToLower()].AffinityMask;
+                priority = Config.ProcessConfigs[process.ProcessName.ToLower()].Priority;
             }
             else
             {

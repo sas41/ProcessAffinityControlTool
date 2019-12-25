@@ -19,9 +19,10 @@ namespace ProcessAffinityControlTool
             Console.WriteLine("Type [help] or [?] for a valid list of commands.");
 
             pow = new ProcessOverwatch();
+
             conf = ReadConfig();
             pausedConf = new PACTConfig();
-            pow.Config = conf;
+
             pow.SetTimer();
 
 
@@ -136,7 +137,7 @@ namespace ProcessAffinityControlTool
                     else if (arguments[0] == "save")
                     {
                         SaveConfig(conf);
-                        Console.WriteLine("Config Saved! Don't forget to apply it!");
+                        Console.WriteLine("Config Saved!");
                     }
                     else if (arguments[0] == "help" || arguments[0] == "?")
                     {
@@ -163,7 +164,6 @@ namespace ProcessAffinityControlTool
 
         static void ApplyCustomConfig()
         {
-            pow.Config = conf;
             pow.SetTimer();
             pow.RunScan();
         }
