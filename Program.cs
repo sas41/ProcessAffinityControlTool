@@ -37,9 +37,10 @@ namespace ProcessAffinityControlTool
             pow.SetTimer();
             pow.RunScan(true);
 
+            Console.WriteLine();
             Console.WriteLine($"P.A.C.T. v{version}, by Berk (SAS41) Alyamach.");
             Console.WriteLine("Type [help] or [?] for a valid list of commands.");
-
+            Console.WriteLine("Official Repository: https://github.com/sas41/ProcessAffinityControlTool/");
             while (true)
             {
                 Console.WriteLine();
