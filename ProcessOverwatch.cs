@@ -43,11 +43,11 @@ namespace ProcessAffinityControlTool
             RunScan();
         }
 
-        public int RunScan()
+        public int RunScan(bool forced = false)
         {
             int errors = 0;
 
-            if (Config.ForceAggressiveScan || aggressiveScanCountdown == 0)
+            if (Config.ForceAggressiveScan || aggressiveScanCountdown == 0 || forced)
             {
                 errors = RunAggressiveScan();
                 aggressiveScanCountdown = Config.AggressiveScanInterval;
