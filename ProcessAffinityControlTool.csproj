@@ -3,7 +3,6 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>1.0.1</Version>
     <PackageIcon>PACT Logo.png</PackageIcon>
     <PackageIconUrl />
@@ -15,6 +14,8 @@
     <Description>Control which cores/threads any program on your computer runs on.</Description>
     <StartupObject>ProcessAffinityControlTool.Program</StartupObject>
     <ApplicationIcon>PACT.ico</ApplicationIcon>
+    <Win32Resource />
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,10 +25,6 @@
   <ItemGroup>
     <None Update="help.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="icon\PACT Logo.png">
-      <Pack>True</Pack>
-      <PackagePath></PackagePath>
     </None>
   </ItemGroup>
 
