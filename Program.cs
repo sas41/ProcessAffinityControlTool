@@ -159,42 +159,64 @@ namespace ProcessAffinityControlTool
         //////////////////////////////////////
         static void AddException(List<string> arguments)
         {
-            int priority;
-            List<int> cores = new List<int>();
-            string exeName;
-
-            if (arguments.Count >= minArgumentCount_AddException && int.TryParse(arguments[2], out priority))
+            if (arguments.Count >= minArgumentCount_AddException)
             {
-                foreach (var str in arguments.Skip(3))
+                int priority;
+                List<int> cores = new List<int>();
+
+                arguments = arguments.Skip(1).ToList();
+                string exeName = arguments[0];
+
+                if (exeName[0] == '\"')
                 {
-                    int number;
-                    if (int.TryParse(str, out number) && number <= highestCoreNumber && number >= 0)
+                    arguments = arguments.Skip(1).ToList();
+                    string current = arguments[0];
+
+                    while (!current.Contains('\"'))
                     {
-                        cores.Add(number);
+                        exeName = $"{exeName} {current}"; 
+                        arguments = arguments.Skip(1).ToList();
+                        current = arguments[0];
+                    }
+
+                    exeName = $"{exeName} {current}";
+                }
+
+                arguments = arguments.Skip(1).ToList();
+
+                if (int.TryParse(arguments[0], out priority))
+                {
+                    foreach (var str in arguments.Skip(1))
+                    {
+                        int number;
+                        if (int.TryParse(str, out number) && number <= highestCoreNumber && number >= 0)
+                        {
+                            cores.Add(number);
+                        }
+                        else
+                        {
+                            throw new ArgumentException();
+                        }
+                    }
+
+                    exeName = exeName.Replace("\"", "");
+                    cores.Sort();
+
+                    if (exeName.Length > 4 && exeName.Substring(exeName.Length - 4, 4) == ".exe")
+                    {
+                        exeName = exeName.Substring(0, exeName.Length - 4);
+                    }
+
+                    if (conf.ProcessConfigs.ContainsKey(exeName))
+                    {
+                        conf.ProcessConfigs[exeName] = new ProcessConfig(cores, priority);
+                        Console.WriteLine($"Process [{exeName}] has been updated!");
                     }
                     else
                     {
-                        throw new ArgumentException();
+                        conf.ProcessConfigs.Add(exeName, new ProcessConfig(cores, priority));
+                        Console.WriteLine($"Process [{exeName}] has been added!");
                     }
-                }
-
-                exeName = arguments[1];
-                cores.Sort();
-
-                if (exeName.Substring(exeName.Length - 4, 4) == ".exe")
-                {
-                    exeName = exeName.Substring(0, exeName.Length - 4);
-                }
-
-                if (conf.ProcessConfigs.ContainsKey(exeName))
-                {
-                    conf.ProcessConfigs[exeName] = new ProcessConfig(cores, priority);
-                    Console.WriteLine($"Process [{exeName}] has been updated!");
-                }
-                else
-                {
-                    conf.ProcessConfigs.Add(exeName, new ProcessConfig(cores, priority));
-                    Console.WriteLine($"Process [{exeName}] has been added!");
                 }
             }
             else

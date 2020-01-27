@@ -30,8 +30,9 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
                     5: Real Time (Not Recommended)
                 Cores:
                     Can be from 0 to howevermany you have.
-        Example:
+        Examples:
             add firefox 2 0 3
+            add "my program" 2 0 3
             
             This will ensure every instance of [firefox]
             runs with [2-Normal] priority on cores [0 & 3].
