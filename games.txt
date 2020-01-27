@@ -1,0 +1,10 @@
+﻿caveblazers
+cemu
+cppfps-win64-shipping
+csgo
+easyanticheat_launcher
+game
+gta5
+origin
+r5apex
+steam

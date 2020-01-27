@@ -12,14 +12,15 @@ namespace ProcessAffinityControlTool
         const string version = "1.0.1";
 
         const int minArgumentCount_AddException = 4;
-        const int exactArgumentCount_RemoveException = 2;
-        const int minArgumentCount_SetDefaultCores = 2;
-        const int exactArgumentCount_SetDefaultPriority = 2;
+        const int exactArgumentCount_AddRemoveProcess = 2;
+        const int minArgumentCount_SetCores = 2;
+        const int exactArgumentCount_SetPriority = 2;
         const int exactArgumentCount_SetScanInterval = 2;
         const int exactArgumentCount_SetAggressiveScanInterval = 2;
         const int exactArgumentCount_SetForceAggressiveScanInterval = 2;
 
         static ProcessOverwatch pow;
+        static List<string> games;
         static PACTConfig conf;
         static PACTConfig pausedConf;
         static bool running;
@@ -29,11 +30,13 @@ namespace ProcessAffinityControlTool
         {
             pow = new ProcessOverwatch();
             conf = ReadConfig();
+            games = ReadGames();
             pausedConf = new PACTConfig();
             running = true;
             highestCoreNumber = Environment.ProcessorCount;
 
             pow.Config = conf;
+            pow.Games = games;
             pow.SetTimer();
             pow.RunScan(true);
 
@@ -57,6 +60,22 @@ namespace ProcessAffinityControlTool
                     else if (arguments[0] == "remove" || arguments[0] == "rem")
                     {
                         RemoveException(arguments);
+                    }
+                    else if (arguments[0] == "add_game" || arguments[0] == "ag")
+                    {
+                        AddGame(arguments);
+                    }
+                    else if (arguments[0] == "remove_game" || arguments[0] == "rg")
+                    {
+                        RemoveGame(arguments);
+                    }
+                    else if (arguments[0] == "game_cores" || arguments[0] == "gc")
+                    {
+                        SetGameCores(arguments);
+                    }
+                    else if (arguments[0] == "game_priority" || arguments[0] == "gp")
+                    {
+                        SetGamePriority(arguments);
                     }
                     else if (arguments[0] == "default_cores" || arguments[0] == "dc")
                     {
@@ -149,12 +168,39 @@ namespace ProcessAffinityControlTool
             return new PACTConfig();
         }
         //////////////////////////////////////
+        static List<string> ReadGames()
+        {
+            string path = AppDomain.CurrentDomain.BaseDirectory;
+            string configPath = path + "games.txt";
+            Console.WriteLine();
+            Console.WriteLine($"Looking for games at: [{configPath}]...");
+            if (File.Exists(configPath))
+            {
+                Console.WriteLine("Games found!");
+                List<string> gamesList = new List<string>(File.ReadAllLines(configPath));
+                gamesList = gamesList.Distinct().ToList();
+                gamesList.Sort();
+                return gamesList;
+            }
+            else
+            {
+                Console.WriteLine("Games not found, games.txt is missing...");
+            }
+
+            return new List<string>();
+        }
+        //////////////////////////////////////
         static void SaveConfig(PACTConfig conf)
         {
             string json = JsonConvert.SerializeObject(conf, Formatting.Indented);
             string path = AppDomain.CurrentDomain.BaseDirectory;
             string configPath = path + "config.json";
             File.WriteAllText(configPath, json);
+
+            string gamesPath = path + "games.txt";
+            games = games.Distinct().ToList();
+            games.Sort();
+            File.WriteAllLines(gamesPath, games.ToArray());
         }
         //////////////////////////////////////
         static void AddException(List<string> arguments)
@@ -174,7 +220,7 @@ namespace ProcessAffinityControlTool
 
                     while (!current.Contains('\"'))
                     {
-                        exeName = $"{exeName} {current}"; 
+                        exeName = $"{exeName} {current}";
                         arguments = arguments.Skip(1).ToList();
                         current = arguments[0];
                     }
@@ -211,11 +257,13 @@ namespace ProcessAffinityControlTool
                     {
                         conf.ProcessConfigs[exeName] = new ProcessConfig(cores, priority);
                         Console.WriteLine($"Process [{exeName}] has been updated!");
+                        Console.WriteLine($"Don't Forget to save!");
                     }
                     else
                     {
                         conf.ProcessConfigs.Add(exeName, new ProcessConfig(cores, priority));
                         Console.WriteLine($"Process [{exeName}] has been added!");
+                        Console.WriteLine($"Don't Forget to save!");
                     }
                 }
             }
@@ -227,25 +275,146 @@ namespace ProcessAffinityControlTool
         //////////////////////////////////////
         static void RemoveException(List<string> arguments)
         {
-            string exeName;
-            if (arguments.Count == exactArgumentCount_RemoveException && arguments[1].Replace(".exe","").Length > 0)
+            if (arguments.Count >= exactArgumentCount_AddRemoveProcess && arguments[1].Replace(".exe", "").Length > 0)
             {
-                exeName = arguments[1];
+                string processName = string.Join(" ", arguments.Skip(1));
 
-                if (exeName.Substring(exeName.Length - 4, 4) == ".exe")
+                if (processName.Substring(processName.Length - 4, 4) == ".exe")
                 {
-                    exeName = exeName.Substring(0, exeName.Length - 4);
+                    processName = processName.Substring(0, processName.Length - 4);
                 }
 
-                if (conf.ProcessConfigs.ContainsKey(exeName))
+                if (processName.Length > 0)
                 {
-                    conf.ProcessConfigs.Remove(exeName);
-                    Console.WriteLine($"Process [{exeName}] has been removed!");
+                    if (conf.ProcessConfigs.ContainsKey(processName))
+                    {
+                        conf.ProcessConfigs.Remove(processName);
+                        Console.WriteLine($"Process [{processName}] has been removed!");
+                        Console.WriteLine($"Don't Forget to save!");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Process [{processName}] is not configured!");
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"Process [{exeName}] is not configured!");
+                    throw new ArgumentException();
                 }
+            }
+            else
+            {
+                throw new ArgumentException();
+            }
+        }
+        //////////////////////////////////////
+        static void AddGame(List<string> arguments)
+        {
+            if (arguments.Count >= exactArgumentCount_AddRemoveProcess)
+            {
+                string processName = string.Join(" ", arguments.Skip(1));
+
+                if (processName.Substring(processName.Length - 4, 4) == ".exe")
+                {
+                    processName = processName.Substring(0, processName.Length - 4);
+                }
+
+                if (processName.Length > 0)
+                {
+                    if (!games.Contains(processName))
+                    {
+                        games.Add(processName);
+                        Console.WriteLine("New game added!");
+                        Console.WriteLine($"Don't Forget to save!");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Game already included!");
+                    }
+                }
+                else
+                {
+                    throw new ArgumentException();
+                }
+            }
+            else
+            {
+                throw new ArgumentException();
+            }
+        }
+        //////////////////////////////////////
+        static void RemoveGame(List<string> arguments)
+        {
+            if (arguments.Count >= exactArgumentCount_AddRemoveProcess)
+            {
+                string processName = string.Join(" ", arguments.Skip(1));
+
+                if (processName.Substring(processName.Length - 4, 4) == ".exe")
+                {
+                    processName = processName.Substring(0, processName.Length - 4);
+                }
+
+                if (processName.Length > 0)
+                {
+                    if (games.Contains(processName))
+                    {
+                        games.Remove(processName);
+                        Console.WriteLine("Game removed!");
+                        Console.WriteLine($"Don't Forget to save!");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Game not found!");
+                    }
+                }
+                else
+                {
+                    throw new ArgumentException();
+                }
+            }
+            else
+            {
+                throw new ArgumentException();
+            }
+        }
+        //////////////////////////////////////
+        static void SetGameCores(List<string> arguments)
+        {
+            if (arguments.Count >= minArgumentCount_SetCores)
+            {
+                List<int> gameCores = new List<int>();
+
+                foreach (var str in arguments.Skip(1))
+                {
+                    int number;
+                    if (int.TryParse(str, out number) && number <= highestCoreNumber && number >= 0)
+                    {
+                        gameCores.Add(number);
+                    }
+                    else
+                    {
+                        throw new ArgumentException();
+                    }
+                }
+                gameCores.Sort();
+                conf.GameConfig = new ProcessConfig(gameCores, conf.GameConfig.PriorityNumber);
+                Console.WriteLine("Game Cores Set!");
+                Console.WriteLine($"Don't Forget to save!");
+            }
+            else
+            {
+                throw new ArgumentException();
+            }
+        }
+        //////////////////////////////////////
+        static void SetGamePriority(List<string> arguments)
+        {
+            int gamePriority;
+            if (arguments.Count == exactArgumentCount_SetPriority && int.TryParse(arguments[1], out gamePriority))
+            {
+                conf.GameConfig = new ProcessConfig(conf.GameConfig.CoreList, gamePriority);
+                Console.WriteLine("Game Priority Set!");
+                Console.WriteLine($"Don't Forget to save!");
             }
             else
             {
@@ -255,7 +424,7 @@ namespace ProcessAffinityControlTool
         //////////////////////////////////////
         static void SetDefaultCores(List<string> arguments)
         {
-            if (arguments.Count >= minArgumentCount_SetDefaultCores)
+            if (arguments.Count >= minArgumentCount_SetCores)
             {
                 List<int> cores = new List<int>();
 
@@ -274,6 +443,7 @@ namespace ProcessAffinityControlTool
                 cores.Sort();
                 conf.DefaultConfig = new ProcessConfig(cores, conf.DefaultConfig.PriorityNumber);
                 Console.WriteLine("Default Cores Set!");
+                Console.WriteLine($"Don't Forget to save!");
             }
             else
             {
@@ -284,10 +454,11 @@ namespace ProcessAffinityControlTool
         static void SetDefaultPriority(List<string> arguments)
         {
             int priority;
-            if (arguments.Count == exactArgumentCount_SetDefaultPriority && int.TryParse(arguments[1], out priority))
+            if (arguments.Count == exactArgumentCount_SetPriority && int.TryParse(arguments[1], out priority))
             {
                 conf.DefaultConfig = new ProcessConfig(conf.DefaultConfig.CoreList, priority);
                 Console.WriteLine("Default Priority Set!");
+                Console.WriteLine($"Don't Forget to save!");
             }
             else
             {
@@ -303,6 +474,7 @@ namespace ProcessAffinityControlTool
                 conf.ScanInterval = interval;
                 pow.SetTimer();
                 Console.WriteLine("Scan Interval Set!");
+                Console.WriteLine($"Don't Forget to save!");
             }
             else
             {
@@ -317,6 +489,7 @@ namespace ProcessAffinityControlTool
             {
                 conf.AggressiveScanInterval = aggresiveScanInterval;
                 Console.WriteLine("Aggressive Scan Interval Set!");
+                Console.WriteLine($"Don't Forget to save!");
             }
             else
             {

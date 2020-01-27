@@ -11,6 +11,7 @@ namespace ProcessAffinityControlTool
     class ProcessOverwatch
     {
         public PACTConfig Config { get; set; }
+        public List<string> Games { get; set; }
         List<Process> managedProcesses;
         int aggressiveScanCountdown = 0;
 
@@ -20,6 +21,7 @@ namespace ProcessAffinityControlTool
         {
             Config = new PACTConfig();
             managedProcesses = new List<Process>();
+            Games = new List<string>();
         }
 
         public void SetTimer()
@@ -119,6 +121,11 @@ namespace ProcessAffinityControlTool
             {
                 mask = (IntPtr)Config.ProcessConfigs[process.ProcessName.ToLower()].AffinityMask;
                 priority = Config.ProcessConfigs[process.ProcessName.ToLower()].Priority;
+            }
+            else if (Games.Contains(process.ProcessName.ToLower()))
+            {
+                mask = (IntPtr)Config.GameConfig.AffinityMask;
+                priority = Config.GameConfig.Priority;
             }
             else
             {
