@@ -1,10 +1,20 @@
-﻿caveblazers
+﻿blackdesert64
+caveblazers
 cemu
 cppfps-win64-shipping
 csgo
+easyanticheat
 easyanticheat_launcher
 game
 gta5
+kingdomcome
+mcc-win64-shipping
+mcclauncher
+modernwarfare
 origin
 r5apex
+regions of ruin
+rpcs3
+ryujinx
 steam
+yuzu

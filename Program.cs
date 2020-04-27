@@ -9,7 +9,7 @@ namespace ProcessAffinityControlTool
 {
     class Program
     {
-        const string version = "1.0.1";
+        const string version = "1.1.0";
 
         const int minArgumentCount_AddException = 4;
         const int exactArgumentCount_AddRemoveProcess = 2;
@@ -551,6 +551,7 @@ namespace ProcessAffinityControlTool
         static void ApplyCustomConfig()
         {
             pow.Config = conf;
+            pow.Games = games;
             pow.SetTimer();
             pow.RunScan(true);
         }
@@ -558,6 +559,7 @@ namespace ProcessAffinityControlTool
         static void ApplyDefaultConfig()
         {
             pow.Config = pausedConf;
+            pow.Games = new List<string>();
             pow.PauseTimer();
             pow.RunScan(true);
         }

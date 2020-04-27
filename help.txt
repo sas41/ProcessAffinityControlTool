@@ -62,6 +62,33 @@ PACT v1.0.1 Commands:
             
         Example:
             default_priority 1
+            -----------------------------------------------------------
+    game_cores or gc
+        Sets the default cores for all games.
+        
+        Syntax:
+            game_cores [cores]
+                Cores:
+                    Can be from 0 to howevermany you have.
+            
+        Example:
+            game_cores 0 1 2 5
+-----------------------------------------------------------
+    game_priority or gp
+        Sets the default priority for all games.
+        
+        Syntax:
+            game_priority [priority]
+                Priority:
+                    0: Idle (Not Recommended)
+                    1: Below Normal
+                    2: Normal
+                    3: Above Normal
+                    4: High
+                    5: Real Time (Not Recommended)
+            
+        Example:
+            game_priority 3
 -----------------------------------------------------------
     scan_interval or si
        Set the scan interval in miliseconds.
