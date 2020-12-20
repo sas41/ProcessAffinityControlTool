@@ -1,0 +1,30 @@
+﻿<Window x:Class="PACTWPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PACTWPF"
+        mc:Ignorable="d"
+        Title="PACT - Process Affinity Control Tool" Height="504" Width="896" WindowStyle="SingleBorderWindow">
+    <TabControl Grid.ColumnSpan="2">
+        <TabItem x:Name="Tab_Status" Header="Status">
+            <Grid x:Name="Grid_Status" ShowGridLines="True">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="Grid_Status_CPU" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" ShowGridLines="True" Initialized="Grid_Status_CPU_Initialized">
+                    <Grid.ColumnDefinitions>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                    </Grid.RowDefinitions>
+                </Grid>
+            </Grid>
+        </TabItem>
+    </TabControl>
+</Window>

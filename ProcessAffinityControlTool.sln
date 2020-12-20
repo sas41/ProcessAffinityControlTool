@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcessAffinityControlTool"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PACTUniversal", "PACTUniversal\PACTUniversal.csproj", "{F94C13AB-7AE2-4789-B164-FD8553A990EE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PACTWPF", "PACTWPF\PACTWPF.csproj", "{A6E2BA6E-C1D4-4605-8462-54321E8ED179}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6E2BA6E-C1D4-4605-8462-54321E8ED179}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6E2BA6E-C1D4-4605-8462-54321E8ED179}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6E2BA6E-C1D4-4605-8462-54321E8ED179}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6E2BA6E-C1D4-4605-8462-54321E8ED179}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
