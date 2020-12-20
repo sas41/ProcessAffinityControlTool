@@ -3,7 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29609.76
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProcessAffinityControlTool", "ProcessAffinityControlTool.csproj", "{E7185821-38D2-420E-82F9-DABEFCF602CB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PACTCore", "PACTCore\PACTCore.csproj", "{0B64C570-3C20-4F76-AA30-AD69D441AB67}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcessAffinityControlTool", "ProcessAffinityControlTool\ProcessAffinityControlTool.csproj", "{17298C27-52EB-43F0-B67D-1368485A32B9}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PACTUniversal", "PACTUniversal\PACTUniversal.csproj", "{F94C13AB-7AE2-4789-B164-FD8553A990EE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,10 +15,18 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E7185821-38D2-420E-82F9-DABEFCF602CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E7185821-38D2-420E-82F9-DABEFCF602CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E7185821-38D2-420E-82F9-DABEFCF602CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E7185821-38D2-420E-82F9-DABEFCF602CB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0B64C570-3C20-4F76-AA30-AD69D441AB67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B64C570-3C20-4F76-AA30-AD69D441AB67}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B64C570-3C20-4F76-AA30-AD69D441AB67}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B64C570-3C20-4F76-AA30-AD69D441AB67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{17298C27-52EB-43F0-B67D-1368485A32B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{17298C27-52EB-43F0-B67D-1368485A32B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{17298C27-52EB-43F0-B67D-1368485A32B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{17298C27-52EB-43F0-B67D-1368485A32B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F94C13AB-7AE2-4789-B164-FD8553A990EE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

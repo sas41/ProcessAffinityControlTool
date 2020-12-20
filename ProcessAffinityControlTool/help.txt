@@ -62,23 +62,42 @@ PACT v1.0.1 Commands:
             
         Example:
             default_priority 1
-            -----------------------------------------------------------
-    game_cores or gc
-        Sets the default cores for all games.
+-----------------------------------------------------------
+    add_hpp or ahpp
+        Adds a high priority processes, to the list of
+        high priority processes's.
         
         Syntax:
-            game_cores [cores]
+            add_hpp [exe_name] 
+
+        Example:
+            add_hpp game
+-----------------------------------------------------------
+    remove_hpp or rhpp
+        Removes a program from the high priority processes list.
+        
+        Syntax:
+            remove_hpp [exe_name]
+            
+        Example:
+            remove_hpp game
+-----------------------------------------------------------
+    hpp_cores or hppc
+        Sets the default cores for all high priority processes.
+        
+        Syntax:
+            hpp_cores [cores]
                 Cores:
                     Can be from 0 to howevermany you have.
             
         Example:
-            game_cores 0 1 2 5
+            hpp_cores 0 1 2 5
 -----------------------------------------------------------
-    game_priority or gp
-        Sets the default priority for all games.
+    hpp_priority or hpp
+        Sets the default process priority for all high priority programs.
         
         Syntax:
-            game_priority [priority]
+            hpp_priority [priority]
                 Priority:
                     0: Idle (Not Recommended)
                     1: Below Normal
@@ -88,7 +107,7 @@ PACT v1.0.1 Commands:
                     5: Real Time (Not Recommended)
             
         Example:
-            game_priority 3
+            hpp_priority 3
 -----------------------------------------------------------
     scan_interval or si
        Set the scan interval in miliseconds.

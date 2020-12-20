@@ -24,7 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="games.txt">
+    <ProjectReference Include="..\PACTCore\PACTCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="hpp.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="possible_games_list.txt">

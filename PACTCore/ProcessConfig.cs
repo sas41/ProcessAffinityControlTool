@@ -5,17 +5,20 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
-namespace ProcessAffinityControlTool
+namespace PACTCore
 {
-    class ProcessConfig
+    public class ProcessConfig
     {
         [JsonProperty]
         public ProcessPriorityClass Priority { get; set; }
+
         [JsonProperty]
         public long AffinityMask { get; set; }
 
+        // Affinity mask is calculated using this set of numbers.
         [JsonProperty]
         public List<int> CoreList { get; private set; }
+
         [JsonProperty]
         public int PriorityNumber { get; private set; }
 

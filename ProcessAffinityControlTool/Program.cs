@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using System.IO;
 using System.Diagnostics;
+using PACTCore;
 
 namespace ProcessAffinityControlTool
 {
@@ -20,7 +21,7 @@ namespace ProcessAffinityControlTool
         const int exactArgumentCount_SetForceAggressiveScanInterval = 2;
 
         static ProcessOverwatch pow;
-        static List<string> games;
+        static List<string> hpps;
         static PACTConfig conf;
         static PACTConfig pausedConf;
         static bool running;
@@ -30,13 +31,13 @@ namespace ProcessAffinityControlTool
         {
             pow = new ProcessOverwatch();
             conf = ReadConfig();
-            games = ReadGames();
+            hpps = ReadHighPriorityProcessNames();
             pausedConf = new PACTConfig();
             running = true;
             highestCoreNumber = Environment.ProcessorCount;
 
             pow.Config = conf;
-            pow.Games = games;
+            pow.HighPriorityExecutables = hpps;
             pow.SetTimer();
             pow.RunScan(true);
 
@@ -61,21 +62,21 @@ namespace ProcessAffinityControlTool
                     {
                         RemoveException(arguments);
                     }
-                    else if (arguments[0] == "add_game" || arguments[0] == "ag")
+                    else if (arguments[0] == "add_hpp" || arguments[0] == "ahpp")
                     {
-                        AddGame(arguments);
+                        AddHighPriorityProcess(arguments);
                     }
-                    else if (arguments[0] == "remove_game" || arguments[0] == "rg")
+                    else if (arguments[0] == "remove_hpp" || arguments[0] == "rhpp")
                     {
-                        RemoveGame(arguments);
+                        RemoveHighPriorityProcess(arguments);
                     }
-                    else if (arguments[0] == "game_cores" || arguments[0] == "gc")
+                    else if (arguments[0] == "hpp_cores" || arguments[0] == "hppc")
                     {
-                        SetGameCores(arguments);
+                        SetHighPriorityProcessCores(arguments);
                     }
-                    else if (arguments[0] == "game_priority" || arguments[0] == "gp")
+                    else if (arguments[0] == "hpp_priority" || arguments[0] == "hpp")
                     {
-                        SetGamePriority(arguments);
+                        SetHighPriorityProcessPriority(arguments);
                     }
                     else if (arguments[0] == "default_cores" || arguments[0] == "dc")
                     {
@@ -168,23 +169,23 @@ namespace ProcessAffinityControlTool
             return new PACTConfig();
         }
         //////////////////////////////////////
-        static List<string> ReadGames()
+        static List<string> ReadHighPriorityProcessNames()
         {
             string path = AppDomain.CurrentDomain.BaseDirectory;
-            string configPath = path + "games.txt";
+            string configPath = path + "hpp.txt";
             Console.WriteLine();
-            Console.WriteLine($"Looking for games at: [{configPath}]...");
+            Console.WriteLine($"Looking for HighPriorityProcess's at: [{configPath}]...");
             if (File.Exists(configPath))
             {
-                Console.WriteLine("Games found!");
-                List<string> gamesList = new List<string>(File.ReadAllLines(configPath));
-                gamesList = gamesList.Distinct().ToList();
-                gamesList.Sort();
-                return gamesList;
+                Console.WriteLine("High Priority Processes found!");
+                List<string> hppList = new List<string>(File.ReadAllLines(configPath));
+                hppList = hppList.Distinct().ToList();
+                hppList.Sort();
+                return hppList;
             }
             else
             {
-                Console.WriteLine("Games not found, games.txt is missing...");
+                Console.WriteLine("High Priority Processes not found, hpp.txt is missing...");
             }
 
             return new List<string>();
@@ -197,10 +198,10 @@ namespace ProcessAffinityControlTool
             string configPath = path + "config.json";
             File.WriteAllText(configPath, json);
 
-            string gamesPath = path + "games.txt";
-            games = games.Distinct().ToList();
-            games.Sort();
-            File.WriteAllLines(gamesPath, games.ToArray());
+            string hppPath = path + "hpp.txt";
+            hpps = hpps.Distinct().ToList();
+            hpps.Sort();
+            File.WriteAllLines(hppPath, hpps.ToArray());
         }
         //////////////////////////////////////
         static void AddException(List<string> arguments)
@@ -253,15 +254,15 @@ namespace ProcessAffinityControlTool
                         exeName = exeName.Substring(0, exeName.Length - 4);
                     }
 
-                    if (conf.ProcessConfigs.ContainsKey(exeName))
+                    if (conf.CustomPriorityProcessConfigs.ContainsKey(exeName))
                     {
-                        conf.ProcessConfigs[exeName] = new ProcessConfig(cores, priority);
+                        conf.CustomPriorityProcessConfigs[exeName] = new ProcessConfig(cores, priority);
                         Console.WriteLine($"Process [{exeName}] has been updated!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
                     else
                     {
-                        conf.ProcessConfigs.Add(exeName, new ProcessConfig(cores, priority));
+                        conf.CustomPriorityProcessConfigs.Add(exeName, new ProcessConfig(cores, priority));
                         Console.WriteLine($"Process [{exeName}] has been added!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
@@ -286,9 +287,9 @@ namespace ProcessAffinityControlTool
 
                 if (processName.Length > 0)
                 {
-                    if (conf.ProcessConfigs.ContainsKey(processName))
+                    if (conf.CustomPriorityProcessConfigs.ContainsKey(processName))
                     {
-                        conf.ProcessConfigs.Remove(processName);
+                        conf.CustomPriorityProcessConfigs.Remove(processName);
                         Console.WriteLine($"Process [{processName}] has been removed!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
@@ -308,7 +309,7 @@ namespace ProcessAffinityControlTool
             }
         }
         //////////////////////////////////////
-        static void AddGame(List<string> arguments)
+        static void AddHighPriorityProcess(List<string> arguments)
         {
             if (arguments.Count >= exactArgumentCount_AddRemoveProcess)
             {
@@ -321,15 +322,15 @@ namespace ProcessAffinityControlTool
 
                 if (processName.Length > 0)
                 {
-                    if (!games.Contains(processName))
+                    if (!hpps.Contains(processName))
                     {
-                        games.Add(processName);
-                        Console.WriteLine("New game added!");
+                        hpps.Add(processName);
+                        Console.WriteLine("New High Priority Process added!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
                     else
                     {
-                        Console.WriteLine("Game already included!");
+                        Console.WriteLine("High Priority Process already included!");
                     }
                 }
                 else
@@ -343,7 +344,7 @@ namespace ProcessAffinityControlTool
             }
         }
         //////////////////////////////////////
-        static void RemoveGame(List<string> arguments)
+        static void RemoveHighPriorityProcess(List<string> arguments)
         {
             if (arguments.Count >= exactArgumentCount_AddRemoveProcess)
             {
@@ -356,15 +357,15 @@ namespace ProcessAffinityControlTool
 
                 if (processName.Length > 0)
                 {
-                    if (games.Contains(processName))
+                    if (hpps.Contains(processName))
                     {
-                        games.Remove(processName);
-                        Console.WriteLine("Game removed!");
+                        hpps.Remove(processName);
+                        Console.WriteLine("High Priority Process removed!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
                     else
                     {
-                        Console.WriteLine("Game not found!");
+                        Console.WriteLine("High Priority Process not found!");
                     }
                 }
                 else
@@ -378,27 +379,27 @@ namespace ProcessAffinityControlTool
             }
         }
         //////////////////////////////////////
-        static void SetGameCores(List<string> arguments)
+        static void SetHighPriorityProcessCores(List<string> arguments)
         {
             if (arguments.Count >= minArgumentCount_SetCores)
             {
-                List<int> gameCores = new List<int>();
+                List<int> highPriorityProcessCores = new List<int>();
 
                 foreach (var str in arguments.Skip(1))
                 {
                     int number;
                     if (int.TryParse(str, out number) && number <= highestCoreNumber && number >= 0)
                     {
-                        gameCores.Add(number);
+                        highPriorityProcessCores.Add(number);
                     }
                     else
                     {
                         throw new ArgumentException();
                     }
                 }
-                gameCores.Sort();
-                conf.GameConfig = new ProcessConfig(gameCores, conf.GameConfig.PriorityNumber);
-                Console.WriteLine("Game Cores Set!");
+                highPriorityProcessCores.Sort();
+                conf.HighPriorityProcessConfig = new ProcessConfig(highPriorityProcessCores, conf.HighPriorityProcessConfig.PriorityNumber);
+                Console.WriteLine("High Priority Process Cores Set!");
                 Console.WriteLine($"Don't Forget to save!");
             }
             else
@@ -407,13 +408,13 @@ namespace ProcessAffinityControlTool
             }
         }
         //////////////////////////////////////
-        static void SetGamePriority(List<string> arguments)
+        static void SetHighPriorityProcessPriority(List<string> arguments)
         {
-            int gamePriority;
-            if (arguments.Count == exactArgumentCount_SetPriority && int.TryParse(arguments[1], out gamePriority))
+            int highPriorityProcessPriority;
+            if (arguments.Count == exactArgumentCount_SetPriority && int.TryParse(arguments[1], out highPriorityProcessPriority))
             {
-                conf.GameConfig = new ProcessConfig(conf.GameConfig.CoreList, gamePriority);
-                Console.WriteLine("Game Priority Set!");
+                conf.HighPriorityProcessConfig = new ProcessConfig(conf.HighPriorityProcessConfig.CoreList, highPriorityProcessPriority);
+                Console.WriteLine("High Priority Process Priority Set!");
                 Console.WriteLine($"Don't Forget to save!");
             }
             else
@@ -441,7 +442,7 @@ namespace ProcessAffinityControlTool
                     }
                 }
                 cores.Sort();
-                conf.DefaultConfig = new ProcessConfig(cores, conf.DefaultConfig.PriorityNumber);
+                conf.DefaultPriorityProcessConfig = new ProcessConfig(cores, conf.DefaultPriorityProcessConfig.PriorityNumber);
                 Console.WriteLine("Default Cores Set!");
                 Console.WriteLine($"Don't Forget to save!");
             }
@@ -456,7 +457,7 @@ namespace ProcessAffinityControlTool
             int priority;
             if (arguments.Count == exactArgumentCount_SetPriority && int.TryParse(arguments[1], out priority))
             {
-                conf.DefaultConfig = new ProcessConfig(conf.DefaultConfig.CoreList, priority);
+                conf.DefaultPriorityProcessConfig = new ProcessConfig(conf.DefaultPriorityProcessConfig.CoreList, priority);
                 Console.WriteLine("Default Priority Set!");
                 Console.WriteLine($"Don't Forget to save!");
             }
@@ -521,13 +522,13 @@ namespace ProcessAffinityControlTool
         static void ShowDefaults()
         {
             Console.WriteLine("Defaults:");
-            Console.WriteLine(conf.DefaultConfig);
+            Console.WriteLine(conf.DefaultPriorityProcessConfig);
         }
         //////////////////////////////////////
         static void ShowExceptions()
         {
             Console.WriteLine("Exceptions:");
-            foreach (var item in conf.ProcessConfigs)
+            foreach (var item in conf.CustomPriorityProcessConfigs)
             {
                 Console.WriteLine($"{item.Key} - {item.Value}");
             }
@@ -551,7 +552,7 @@ namespace ProcessAffinityControlTool
         static void ApplyCustomConfig()
         {
             pow.Config = conf;
-            pow.Games = games;
+            pow.HighPriorityExecutables = hpps;
             pow.SetTimer();
             pow.RunScan(true);
         }
@@ -559,7 +560,7 @@ namespace ProcessAffinityControlTool
         static void ApplyDefaultConfig()
         {
             pow.Config = pausedConf;
-            pow.Games = new List<string>();
+            pow.HighPriorityExecutables = new List<string>();
             pow.PauseTimer();
             pow.RunScan(true);
         }

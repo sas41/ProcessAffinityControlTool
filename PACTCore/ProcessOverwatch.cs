@@ -6,12 +6,12 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Timers;
 
-namespace ProcessAffinityControlTool
+namespace PACTCore
 {
-    class ProcessOverwatch
+    public class ProcessOverwatch
     {
         public PACTConfig Config { get; set; }
-        public List<string> Games { get; set; }
+        public List<string> HighPriorityExecutables { get; set; }
         List<Process> managedProcesses;
         int aggressiveScanCountdown = 0;
 
@@ -21,12 +21,12 @@ namespace ProcessAffinityControlTool
         {
             Config = new PACTConfig();
             managedProcesses = new List<Process>();
-            Games = new List<string>();
+            HighPriorityExecutables = new List<string>();
         }
 
         public void SetTimer()
         {
-            // Create a timer with a two second interval.
+            // Create a timer with a X second interval.
             ScanTimer = new System.Timers.Timer(Config.ScanInterval);
 
             // Hook up the Elapsed event for the timer. 
@@ -63,6 +63,7 @@ namespace ProcessAffinityControlTool
             return errors;
         }
 
+        // Normal scans only fiddle with processes that are new compared to the last normal scan.
         private int RunNormalScan()
         {
             int errorCount = 0;
@@ -74,20 +75,20 @@ namespace ProcessAffinityControlTool
                 {
                     if (!managedProcesses.Contains(process))
                     {
-                        HandleProcess(process);
+                        SetProcessAffinityAndPriority(process);
                         managedProcesses.Add(process);
                     }
                 }
                 catch (Exception e)
                 {
                     errorCount++;
-                    //Console.WriteLine(e.Message);
                 }
             }
 
             return errorCount;
         }
 
+        // Aggressive Scans apply to both new processes and re-apply to already scanned processes.
         private int RunAggressiveScan()
         {
 
@@ -100,37 +101,36 @@ namespace ProcessAffinityControlTool
             {
                 try
                 {
-                    HandleProcess(process);
+                    SetProcessAffinityAndPriority(process);
                     managedProcesses.Add(process);
                 }
                 catch (Exception e)
                 {
                     errorCount++;
-                    //Console.WriteLine(e.Message);
                 }
             }
 
             return errorCount;
         }
 
-        private void HandleProcess(Process process)
+        private void SetProcessAffinityAndPriority(Process process)
         {
             IntPtr mask;
             ProcessPriorityClass priority;
-            if (Config.ProcessConfigs.ContainsKey(process.ProcessName.ToLower()))
+            if (Config.CustomPriorityProcessConfigs.ContainsKey(process.ProcessName.ToLower()))
             {
-                mask = (IntPtr)Config.ProcessConfigs[process.ProcessName.ToLower()].AffinityMask;
-                priority = Config.ProcessConfigs[process.ProcessName.ToLower()].Priority;
+                mask = (IntPtr)Config.CustomPriorityProcessConfigs[process.ProcessName.ToLower()].AffinityMask;
+                priority = Config.CustomPriorityProcessConfigs[process.ProcessName.ToLower()].Priority;
             }
-            else if (Games.Contains(process.ProcessName.ToLower()))
+            else if (HighPriorityExecutables.Contains(process.ProcessName.ToLower()))
             {
-                mask = (IntPtr)Config.GameConfig.AffinityMask;
-                priority = Config.GameConfig.Priority;
+                mask = (IntPtr)Config.HighPriorityProcessConfig.AffinityMask;
+                priority = Config.HighPriorityProcessConfig.Priority;
             }
             else
             {
-                mask = (IntPtr)Config.DefaultConfig.AffinityMask;
-                priority = Config.DefaultConfig.Priority;
+                mask = (IntPtr)Config.DefaultPriorityProcessConfig.AffinityMask;
+                priority = Config.DefaultPriorityProcessConfig.Priority;
             }
 
             // Set Process Affinity
