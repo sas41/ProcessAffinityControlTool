@@ -10,19 +10,30 @@ namespace PACTCore
 {
     public class ProcessOverwatch
     {
-        public PACTConfig Config { get; set; }
-        public List<string> HighPriorityExecutables { get; set; }
-        List<Process> managedProcesses;
-        int aggressiveScanCountdown = 0;
-
         private static System.Timers.Timer ScanTimer;
+
+
+        private PACTConfig config;
+        public PACTConfig Config
+        {
+            get { return config; }
+            set { config = value; Config.RecalculateAffinities(); }
+        }
+
+        public int AggressiveScanCountdown { get; set; }
+        public List<int> ManagedProcesses { get; private set; }
+        public List<Process> ProtectedProcesses { get; private set; }
 
         public ProcessOverwatch()
         {
             Config = new PACTConfig();
-            managedProcesses = new List<Process>();
-            HighPriorityExecutables = new List<string>();
+            ManagedProcesses = new List<int>();
+            ProtectedProcesses = new List<Process>();
+            AggressiveScanCountdown = 0;
+            Config.RecalculateAffinities();
         }
+
+
 
         public void SetTimer()
         {
@@ -45,84 +56,86 @@ namespace PACTCore
             RunScan();
         }
 
-        public int RunScan(bool forced = false)
+        public void RunScan(bool forced = false)
         {
-            int errors = 0;
-
-            if (Config.ForceAggressiveScan || aggressiveScanCountdown == 0 || forced)
+            if (Config.ForceAggressiveScan || AggressiveScanCountdown == 0 || forced)
             {
-                errors = RunAggressiveScan();
-                aggressiveScanCountdown = Config.AggressiveScanInterval;
+                RunAggressiveScan();
+                AggressiveScanCountdown = Config.AggressiveScanInterval;
             }
             else
             {
-                errors = RunNormalScan();
-                aggressiveScanCountdown--;
+                RunNormalScan();
+                AggressiveScanCountdown--;
             }
 
-            return errors;
         }
 
         // Normal scans only fiddle with processes that are new compared to the last normal scan.
-        private int RunNormalScan()
+        private void RunNormalScan()
         {
-            int errorCount = 0;
-            List<Process> allProcesses = Process.GetProcesses().OrderBy(process => process.ProcessName).ToList();
-
-            foreach (var process in allProcesses)
+            foreach (var process in Process.GetProcesses())
             {
+                int hash = process.GetHashCode();
                 try
                 {
-                    if (!managedProcesses.Contains(process))
+                    if (!ManagedProcesses.Contains(hash))
                     {
                         SetProcessAffinityAndPriority(process);
-                        managedProcesses.Add(process);
+                        ManagedProcesses.Add(hash);
                     }
                 }
                 catch (Exception e)
                 {
-                    errorCount++;
+                    if (!ProtectedProcesses.Contains(process))
+                    {
+                        ProtectedProcesses.Add(process);
+                    }
                 }
             }
-
-            return errorCount;
         }
 
         // Aggressive Scans apply to both new processes and re-apply to already scanned processes.
-        private int RunAggressiveScan()
+        private void RunAggressiveScan()
         {
+            Config.RecalculateAffinities();
+            ProtectedProcesses.Clear();
+            ManagedProcesses.Clear();
 
-            int errorCount = 0;
-            List<Process> allProcesses = Process.GetProcesses().OrderBy(process => process.ProcessName).ToList();
-            
-            managedProcesses = new List<Process>();
-
-            foreach (var process in allProcesses)
+            foreach (var process in Process.GetProcesses())
             {
+                int hash = process.GetHashCode();
                 try
                 {
                     SetProcessAffinityAndPriority(process);
-                    managedProcesses.Add(process);
+                    ManagedProcesses.Add(hash);
                 }
                 catch (Exception e)
                 {
-                    errorCount++;
+                    ProtectedProcesses.Add(process);
                 }
             }
-
-            return errorCount;
         }
 
         private void SetProcessAffinityAndPriority(Process process)
         {
+            // Todo: Write a case-insensitive comparator extension for dictionaries.
+            // This is inhuman...
+
             IntPtr mask;
             ProcessPriorityClass priority;
-            if (Config.CustomPriorityProcessConfigs.ContainsKey(process.ProcessName.ToLower()))
+
+            string normalizedName = process.ProcessName.ToLower();
+            List<string> normalizedList = Config.HighPriorityProcessList.Select(x => x.ToLower()).ToList();
+            Dictionary<string, string> normalizedDictionary = Config.CustomPriorityProcessList.ToDictionary(x => x.Key.ToLower(), x => x.Key);
+
+            if (normalizedDictionary.ContainsKey(normalizedName))
             {
-                mask = (IntPtr)Config.CustomPriorityProcessConfigs[process.ProcessName.ToLower()].AffinityMask;
-                priority = Config.CustomPriorityProcessConfigs[process.ProcessName.ToLower()].Priority;
+                string dictionaryName = normalizedDictionary[normalizedName];
+                mask = (IntPtr)Config.CustomPriorityProcessList[dictionaryName].AffinityMask;
+                priority = Config.CustomPriorityProcessList[dictionaryName].Priority;
             }
-            else if (HighPriorityExecutables.Contains(process.ProcessName.ToLower()))
+            else if (normalizedList.Contains(normalizedName))
             {
                 mask = (IntPtr)Config.HighPriorityProcessConfig.AffinityMask;
                 priority = Config.HighPriorityProcessConfig.Priority;

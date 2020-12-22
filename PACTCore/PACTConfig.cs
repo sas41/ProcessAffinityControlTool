@@ -11,7 +11,11 @@ namespace PACTCore
     {
         // Set of EXE names with their corresponding process configs.
         [JsonProperty]
-        public Dictionary<string, ProcessConfig> CustomPriorityProcessConfigs { get; set; }
+        public Dictionary<string, ProcessConfig> CustomPriorityProcessList { get; set; }
+
+        // Set of high priority EXE names.
+        [JsonProperty]
+        public List<string> HighPriorityProcessList { get; set; }
 
         // Applies to all high-priority processes.
         [JsonProperty]
@@ -55,26 +59,32 @@ namespace PACTCore
         [JsonProperty]
         public bool ForceAggressiveScan { get; set; }
 
-        // This constructor is like so, because of automated deserialization by JSON.NET.
-        // It ain't broke, so don't fix it.
-        public PACTConfig(Dictionary<string, ProcessConfig> processConfigs = null, ProcessConfig highPriorityProcessConfig = null, ProcessConfig defaultPriorityProcessConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 5, bool forceAggressiveScan = false)
+
+
+        public PACTConfig(Dictionary<string, ProcessConfig> customPriorityProcessList = null, List<string> highPriorityProcessList = null, ProcessConfig highPriorityProcessConfig = null, ProcessConfig defaultPriorityProcessConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 20, bool forceAggressiveScan = false)
         {
-            CustomPriorityProcessConfigs = processConfigs;
-            if (processConfigs == null)
+            CustomPriorityProcessList = customPriorityProcessList;
+            if (customPriorityProcessList == null)
             {
-                CustomPriorityProcessConfigs = new Dictionary<string, ProcessConfig>();
+                CustomPriorityProcessList = new Dictionary<string, ProcessConfig>();
+            }
+
+            HighPriorityProcessList = highPriorityProcessList;
+            if (HighPriorityProcessList == null)
+            {
+                HighPriorityProcessList = new List<string>();
             }
 
             HighPriorityProcessConfig = highPriorityProcessConfig;
             if (defaultPriorityProcessConfig == null)
             {
-                HighPriorityProcessConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList(), 2);
+                HighPriorityProcessConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList());
             }
 
             DefaultPriorityProcessConfig = defaultPriorityProcessConfig;
             if (defaultPriorityProcessConfig == null)
             {
-                DefaultPriorityProcessConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList(), 2);
+                DefaultPriorityProcessConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList());
             }
 
             ScanInterval = scanInterval;
@@ -82,5 +92,50 @@ namespace PACTCore
             ForceAggressiveScan = forceAggressiveScan;
         }
 
+
+
+        public void RecalculateAffinities()
+        {
+            DefaultPriorityProcessConfig.ReCalculateMask();
+            HighPriorityProcessConfig.ReCalculateMask();
+            foreach (var kvp in CustomPriorityProcessList)
+            {
+                kvp.Value.ReCalculateMask();
+            }
+        }
+
+        public void AddToHighPriority(string name)
+        {
+            Clear(name);
+            this.HighPriorityProcessList.Add(name);
+        }
+
+        public void AddToCustomPriority(string name, ProcessConfig conf)
+        {
+            Clear(name);
+            this.CustomPriorityProcessList.Add(name, conf);
+        }
+
+        public void Clear(string name)
+        {
+            // Todo: Again, write a case-insensitive comparator extension for dictionaries.
+            // This is inhuman...
+
+            string normalizedName = name.ToLower();
+            Dictionary<string, string> normalizedListDictionary = HighPriorityProcessList.ToDictionary(x => x.ToLower(), x => x);
+            Dictionary<string, string> normalizedDictionary = CustomPriorityProcessList.ToDictionary(x => x.Key.ToLower(), x => x.Key);
+
+            if (normalizedDictionary.ContainsKey(normalizedName))
+            {
+                string dictionaryName = normalizedDictionary[normalizedName];
+                this.CustomPriorityProcessList.Remove(dictionaryName);
+            }
+            
+            if (normalizedListDictionary.ContainsKey(normalizedName))
+            {
+                string dictionaryName = normalizedListDictionary[normalizedName];
+                this.HighPriorityProcessList.Remove(dictionaryName);
+            }
+        }
     }
 }

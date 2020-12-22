@@ -254,15 +254,15 @@ namespace ProcessAffinityControlTool
                         exeName = exeName.Substring(0, exeName.Length - 4);
                     }
 
-                    if (conf.CustomPriorityProcessConfigs.ContainsKey(exeName))
+                    if (conf.CustomPriorityProcessList.ContainsKey(exeName))
                     {
-                        conf.CustomPriorityProcessConfigs[exeName] = new ProcessConfig(cores, priority);
+                        conf.CustomPriorityProcessList[exeName] = new ProcessConfig(cores, priority);
                         Console.WriteLine($"Process [{exeName}] has been updated!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
                     else
                     {
-                        conf.CustomPriorityProcessConfigs.Add(exeName, new ProcessConfig(cores, priority));
+                        conf.CustomPriorityProcessList.Add(exeName, new ProcessConfig(cores, priority));
                         Console.WriteLine($"Process [{exeName}] has been added!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
@@ -287,9 +287,9 @@ namespace ProcessAffinityControlTool
 
                 if (processName.Length > 0)
                 {
-                    if (conf.CustomPriorityProcessConfigs.ContainsKey(processName))
+                    if (conf.CustomPriorityProcessList.ContainsKey(processName))
                     {
-                        conf.CustomPriorityProcessConfigs.Remove(processName);
+                        conf.CustomPriorityProcessList.Remove(processName);
                         Console.WriteLine($"Process [{processName}] has been removed!");
                         Console.WriteLine($"Don't Forget to save!");
                     }
@@ -528,7 +528,7 @@ namespace ProcessAffinityControlTool
         static void ShowExceptions()
         {
             Console.WriteLine("Exceptions:");
-            foreach (var item in conf.CustomPriorityProcessConfigs)
+            foreach (var item in conf.CustomPriorityProcessList)
             {
                 Console.WriteLine($"{item.Key} - {item.Value}");
             }

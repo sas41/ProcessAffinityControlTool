@@ -7,6 +7,7 @@ using System.Text;
 
 namespace PACTCore
 {
+
     public class ProcessConfig
     {
         [JsonProperty]
@@ -15,63 +16,57 @@ namespace PACTCore
         [JsonProperty]
         public long AffinityMask { get; set; }
 
+
         // Affinity mask is calculated using this set of numbers.
         [JsonProperty]
         public List<int> CoreList { get; private set; }
 
-        [JsonProperty]
-        public int PriorityNumber { get; private set; }
 
-        public ProcessConfig()
+
+        public ProcessConfig(List<int> coreNumbers = null)
         {
-            // Empty Constructor for JSON Deserialization, do not use!
-            CoreList = new List<int>();
+            Priority = ProcessPriorityClass.Normal;
+
+            if (coreNumbers == null)
+            {
+                CoreList = new List<int>();
+            }
+            else
+            {
+
+                CoreList = coreNumbers;
+                ReCalculateMask();
+            }
         }
 
-        public ProcessConfig(List<int> coreNumbers, int priority)
-        {
-            CoreList = coreNumbers;
-            PriorityNumber = priority;
 
-            AffinityMask = CalculateMask(coreNumbers);
-            Priority = CalculatePriority(priority);
-        }
 
-        public static long CalculateMask(List<int> coreNumbers)
+        public long ReCalculateMask()
         {
             long mask = 0;
 
             long maxCores = Environment.ProcessorCount;
-            if (coreNumbers.Any(number => number > maxCores))
+            if (CoreList.Any(number => number > maxCores))
             {
                 throw new InvalidOperationException($"Invalid Core number. Max number of cores: {maxCores}");
             }
+            else if (CoreList.Count == 0)
+            {
+                CoreList = new List<int>() { 0 };
+            }
 
-            foreach (var coreNumber in coreNumbers)
+            foreach (var coreNumber in CoreList)
             {
                 mask = mask | (1 << coreNumber);
             }
 
+            AffinityMask = mask;
             return mask;
-        }
-
-        public static ProcessPriorityClass CalculatePriority(int priority)
-        {
-            switch (priority)
-            {
-                case 0: { return ProcessPriorityClass.Idle; }
-                case 1: { return ProcessPriorityClass.BelowNormal; }
-                case 2: { return ProcessPriorityClass.Normal; }
-                case 3: { return ProcessPriorityClass.AboveNormal; }
-                case 4: { return ProcessPriorityClass.High; }
-                case 5: { return ProcessPriorityClass.RealTime; }
-                default: { return ProcessPriorityClass.Normal; }
-            }
         }
 
         public override string ToString()
         {
-            return $"Priority: {PriorityNumber} ({Priority}), Mask: {AffinityMask}, Cores: {string.Join(", ", CoreList)}";
+            return $"Priority: ({Priority.ToString()}), Mask: {AffinityMask}, Cores: {string.Join(", ", CoreList)}";
         }
     }
 }

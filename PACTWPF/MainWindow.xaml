@@ -5,10 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PACTWPF"
         mc:Ignorable="d"
-        Title="PACT - Process Affinity Control Tool" Height="504" Width="896" WindowStyle="SingleBorderWindow">
-    <TabControl Grid.ColumnSpan="2">
-        <TabItem x:Name="Tab_Status" Header="Status">
-            <Grid x:Name="Grid_Status" ShowGridLines="True">
+        Title="PACT - Process Affinity Control Tool" Height="504" Width="896" WindowStyle="SingleBorderWindow" FontSize="16">
+    <TabControl Grid.ColumnSpan="2" FontSize="16">
+        <TabItem x:Name="Tab_Status" Header="Status" FontSize="16">
+            <Grid x:Name="Grid_Status">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition />
                     <ColumnDefinition />
@@ -18,12 +18,93 @@
                     <RowDefinition />
                 </Grid.RowDefinitions>
 
+                <Grid x:Name="Grid_Status_Text" Grid.Row="0" Grid.Column="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+
+                    <Label Grid.Row="0" Grid.Column="0" Content="Total CPU Usage:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Total_CPU_Usage_Label" Grid.Row="0" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="1" Grid.Column="0" Content="Total Process Count:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Total_Process_Count_Label" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="Active High Priority Process:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Active_High_Priority_Process_Count_Label" Grid.Row="2" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="3" Grid.Column="0" Content="Active Exceptions Count:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Active_Exceptions_Count_Label" Grid.Row="3" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="4" Grid.Column="0" Content="Inaccessible Process Count:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Inaccessible_Process_Count_Label" Grid.Row="4" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="6" Grid.Column="0" Content="" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                    <Label x:Name="Creator_Label" Grid.Row="7" Grid.Column="0" Content="PACT by Berk (SAS41) Alyamach." HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                </Grid>
                 <Grid x:Name="Grid_Status_CPU" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" ShowGridLines="True" Initialized="Grid_Status_CPU_Initialized">
                     <Grid.ColumnDefinitions>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition />
                     </Grid.RowDefinitions>
                 </Grid>
+            </Grid>
+        </TabItem>
+
+        <TabItem x:Name="Tab_Configure" Header="Configure" FontSize="16">
+            <Grid x:Name="Grid_Configure" ShowGridLines="True">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+
+                <Label Content="High Priority Processes" Grid.Row="0" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <Button x:Name="Button_HighPriority_AddManual" Content="Add process" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_HighPriority_AddManual_Click"/>
+                <Button x:Name="Button_HighPriority_Configure" Content="Configure" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_HighPriority_Configure_Click"/>
+
+                <Button x:Name="Button_HighPriority_Remove" Content="Remove" Grid.Row="2" Grid.Column="0" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_HighPriority_Remove_Click"/>
+                <Button x:Name="Button_HighPriority_MoveToException" Content="Move to Exceptions" Grid.Row="2" Grid.Column="0" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_HighPriority_MoveToException_Click"/>
+                <ListBox x:Name="ListBox_HighPriority" Grid.Row="3" Grid.Column="0" Initialized="ListBox_HighPriority_Initialized" SelectionChanged ="ListBox_HighPriority_SelectionChanged"/>
+
+
+                <Label Content="Running, Normal Processes" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <Button x:Name="Button_Normal_Refresh" Content="Refresh List" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Normal_Refresh_Click"/>
+                <Button x:Name="Button_Normal_Configure" Content="Configure" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Normal_Configure_Click"/>
+
+                <Button x:Name="Button_Normal_MoveToHighPriority" Content="Move to HP" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Normal_MoveToHighPriority_Click"/>
+                <Button x:Name="Button_Normal_MoveToException" Content="Move to EX" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Normal_MoveToException_Click"/>
+                <ListBox x:Name="ListBox_Normal" Grid.Row="3" Grid.Column="1" Initialized="ListBox_Normal_Initialized" SelectionChanged ="ListBox_Normal_SelectionChanged"/>
+
+
+
+                <Label Content="Processes Exceptions" Grid.Row="0" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <Button x:Name="Button_Exceptions_Configure" Content="Configure Selected..." Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Exceptions_Configure_Click" IsEnabled="False"/>
+
+                <Button x:Name="Button_Exceptions_MoveToHighPriority" Content="Move to HP" Grid.Row="2" Grid.Column="2" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Exceptions_MoveToHighPriority_Click"/>
+                <Button x:Name="Button_Exceptions_Remove" Content="Remove" Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Exceptions_Remove_Click"/>
+                <ListBox x:Name="ListBox_Exceptions" Grid.Row="3" Grid.Column="2" Initialized="ListBox_Exceptions_Initialized" SelectionChanged ="ListBox_Exceptions_SelectionChanged"/>
+
             </Grid>
         </TabItem>
     </TabControl>

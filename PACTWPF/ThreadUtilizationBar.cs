@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Diagnostics;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
 
@@ -12,6 +13,8 @@ namespace PACTWPF
         private int AssociatedThreadNumber { get; set; }
         private PerformanceCounter BoundCounter { get; set; }
 
+        public Label CustomLabel { get; set; }
+
         private static TimeSpan duration = TimeSpan.FromMilliseconds(1000);
         public ThreadUtilizationBar(int threadNumber) : base()
         {
@@ -20,17 +23,22 @@ namespace PACTWPF
             this.Name = $"Status_ProgressBar_CPU_{AssociatedThreadNumber}";
             this.ToolTip = $"Thread: {AssociatedThreadNumber}";
             BoundCounter = new PerformanceCounter("Processor", "% Processor Time", $"{AssociatedThreadNumber}");
-        }
 
-        public void SetPercent(double percentage)
-        {
-            DoubleAnimation animation = new DoubleAnimation(percentage, duration);
-            this.BeginAnimation(ProgressBar.ValueProperty, animation);
+            CustomLabel = new Label();
+            CustomLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            CustomLabel.VerticalAlignment = VerticalAlignment.Center;
+            CustomLabel.HorizontalContentAlignment = HorizontalAlignment.Center;
+            CustomLabel.VerticalContentAlignment = VerticalAlignment.Center;
+            CustomLabel.FontSize = CustomLabel.FontSize * 2;
         }
 
         public void UpdateUtilization()
         {
-            this.SetPercent(BoundCounter.NextValue());
+            double percentage = BoundCounter.NextValue();
+            DoubleAnimation animation = new DoubleAnimation(percentage, duration);
+            this.BeginAnimation(ProgressBar.ValueProperty, animation);
+            CustomLabel.Content = $"Thread {AssociatedThreadNumber}:{Environment.NewLine}{percentage.ToString("0")}%";
+
         }
     }
 }
