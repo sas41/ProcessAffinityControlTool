@@ -11,19 +11,27 @@ namespace PACTCore
     {
         // Set of EXE names with their corresponding process configs.
         [JsonProperty]
-        public Dictionary<string, ProcessConfig> CustomPriorityProcessList { get; set; }
+        private Dictionary<int, ProcessConfig> CustomPerformanceProcesses { get; set; }
 
-        // Set of high priority EXE names.
+        // Set of high performance executable names.
         [JsonProperty]
-        public List<string> HighPriorityProcessList { get; set; }
+        private Dictionary<int, string> CustomPerformanceHashToNameDictionary { get; set; }
 
-        // Applies to all high-priority processes.
+        // Set of high performance executable names.
         [JsonProperty]
-        public ProcessConfig HighPriorityProcessConfig { get; set; }
+        private Dictionary<int, string> HighPerformanceProcesses { get; set; }
 
-        // Applies to all non-high-priority AND non-custom-priority processes.
+        // Set of blacklisted executable names.
         [JsonProperty]
-        public ProcessConfig DefaultPriorityProcessConfig { get; set; }
+        private Dictionary<int, string> Blacklist { get; set; }
+
+        // Applies to all high-performance processes.
+        [JsonProperty]
+        public ProcessConfig HighPerformanceProcessConfig { get; set; }
+
+        // Applies to all non-high-performance AND non-custom-performance processes.
+        [JsonProperty]
+        public ProcessConfig DefaultPerformanceProcessConfig { get; set; }
 
         private int scanInterval;
         [JsonProperty]
@@ -61,31 +69,14 @@ namespace PACTCore
 
 
 
-        public PACTConfig(Dictionary<string, ProcessConfig> customPriorityProcessList = null, List<string> highPriorityProcessList = null, ProcessConfig highPriorityProcessConfig = null, ProcessConfig defaultPriorityProcessConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 20, bool forceAggressiveScan = false)
+        public PACTConfig(Dictionary<int, ProcessConfig> customPerformanceProcesses = null, Dictionary<int, string> customPerformanceHashToNameDictionary = null, Dictionary<int, string> highPerformanceProcesses = null, Dictionary<int, string> blacklistedProcesses = null, ProcessConfig highPerformanceProcessConfig = null, ProcessConfig defaultPerformanceProcessConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 20, bool forceAggressiveScan = false)
         {
-            CustomPriorityProcessList = customPriorityProcessList;
-            if (customPriorityProcessList == null)
-            {
-                CustomPriorityProcessList = new Dictionary<string, ProcessConfig>();
-            }
-
-            HighPriorityProcessList = highPriorityProcessList;
-            if (HighPriorityProcessList == null)
-            {
-                HighPriorityProcessList = new List<string>();
-            }
-
-            HighPriorityProcessConfig = highPriorityProcessConfig;
-            if (defaultPriorityProcessConfig == null)
-            {
-                HighPriorityProcessConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList());
-            }
-
-            DefaultPriorityProcessConfig = defaultPriorityProcessConfig;
-            if (defaultPriorityProcessConfig == null)
-            {
-                DefaultPriorityProcessConfig = new ProcessConfig(Enumerable.Range(0, Environment.ProcessorCount).ToList());
-            }
+            CustomPerformanceProcesses = (customPerformanceProcesses != null) ? customPerformanceProcesses : new Dictionary<int, ProcessConfig>();
+            HighPerformanceProcesses = (highPerformanceProcesses != null) ? highPerformanceProcesses : new Dictionary<int, string>();
+            CustomPerformanceHashToNameDictionary = (customPerformanceHashToNameDictionary != null) ? customPerformanceHashToNameDictionary : new Dictionary<int, string>();
+            Blacklist = (blacklistedProcesses != null) ? blacklistedProcesses : new Dictionary<int, string>();
+            HighPerformanceProcessConfig = (highPerformanceProcessConfig != null) ? highPerformanceProcessConfig : new ProcessConfig();
+            DefaultPerformanceProcessConfig = (defaultPerformanceProcessConfig != null) ? defaultPerformanceProcessConfig : new ProcessConfig();
 
             ScanInterval = scanInterval;
             AggressiveScanInterval = aggressiveScanInterval;
@@ -96,46 +87,134 @@ namespace PACTCore
 
         public void RecalculateAffinities()
         {
-            DefaultPriorityProcessConfig.ReCalculateMask();
-            HighPriorityProcessConfig.ReCalculateMask();
-            foreach (var kvp in CustomPriorityProcessList)
+            DefaultPerformanceProcessConfig.ReCalculateMask();
+            HighPerformanceProcessConfig.ReCalculateMask();
+
+            foreach (var kvp in CustomPerformanceProcesses)
             {
                 kvp.Value.ReCalculateMask();
             }
         }
 
-        public void AddToHighPriority(string name)
+
+        // Data management methods below...
+
+        public ProcessConfig GetCustomPerformanceConfig(string name)
         {
-            Clear(name);
-            this.HighPriorityProcessList.Add(name);
+            string normalized = name.Trim().ToLower();
+            int key = CustomPerformanceHashToNameDictionary.First(x => x.Value == normalized).Key;
+
+            return CustomPerformanceProcesses[key];
         }
 
-        public void AddToCustomPriority(string name, ProcessConfig conf)
+        public IReadOnlyList<string> GetHighPerformanceProcesses()
         {
-            Clear(name);
-            this.CustomPriorityProcessList.Add(name, conf);
+            return HighPerformanceProcesses.Values.ToList();
         }
 
-        public void Clear(string name)
+        public IReadOnlyList<string> GetCustomPerformanceProcessConfigs()
         {
-            // Todo: Again, write a case-insensitive comparator extension for dictionaries.
-            // This is inhuman...
+            return CustomPerformanceHashToNameDictionary.Values.ToList();
+        }
 
-            string normalizedName = name.ToLower();
-            Dictionary<string, string> normalizedListDictionary = HighPriorityProcessList.ToDictionary(x => x.ToLower(), x => x);
-            Dictionary<string, string> normalizedDictionary = CustomPriorityProcessList.ToDictionary(x => x.Key.ToLower(), x => x.Key);
+        public IReadOnlyList<string> GetBlacklistedProcesses()
+        {
+            return Blacklist.Values.ToList();
+        }
 
-            if (normalizedDictionary.ContainsKey(normalizedName))
+
+
+
+        // The three methods below need to be sped up, massively.
+        // Hashtable is a must.
+
+        public bool CheckIfProcessIsHighPerformance(string name)
+        {
+            int hash = name.Trim().ToLower().GetHashCode();
+            return HighPerformanceProcesses.ContainsKey(hash);
+        }
+
+        public bool CheckIfProcessIsCustomPerformance(string name)
+        {
+            int hash = name.Trim().ToLower().GetHashCode();
+            return CustomPerformanceProcesses.ContainsKey(hash);
+        }
+
+        public bool CheckIfProcessIsBlacklisted(string name)
+        {
+            int hash = name.Trim().ToLower().GetHashCode();
+            return Blacklist.ContainsKey(hash);
+        }
+
+
+
+
+
+
+        public void AddOrUpdate(string name, ProcessConfig conf = null)
+        {
+            int hash = name.Trim().ToLower().GetHashCode();
+            ClearProcessConfig(hash);
+
+            if (conf == null)
             {
-                string dictionaryName = normalizedDictionary[normalizedName];
-                this.CustomPriorityProcessList.Remove(dictionaryName);
+                this.HighPerformanceProcesses.Add(hash, name.Trim());
             }
-            
-            if (normalizedListDictionary.ContainsKey(normalizedName))
+            else
             {
-                string dictionaryName = normalizedListDictionary[normalizedName];
-                this.HighPriorityProcessList.Remove(dictionaryName);
+                this.CustomPerformanceProcesses.Add(hash, conf);
+                this.CustomPerformanceHashToNameDictionary.Add(hash, name.Trim());
             }
+        }
+
+        public void AddToBlacklist(string name)
+        {
+            int hash = name.Trim().ToLower().GetHashCode();
+            ClearProcessConfig(hash);
+            this.Blacklist.Add(hash, name.Trim());
+        }
+
+        public void ClearProcessConfig(int hash)
+        {
+            if (HighPerformanceProcesses.ContainsKey(hash))
+            {
+                HighPerformanceProcesses.Remove(hash);
+            }
+
+            if (CustomPerformanceProcesses.ContainsKey(hash))
+            {
+                CustomPerformanceProcesses.Remove(hash);
+            }
+
+            if (CustomPerformanceHashToNameDictionary.ContainsKey(hash))
+            {
+                CustomPerformanceHashToNameDictionary.Remove(hash);
+            }
+
+            if (Blacklist.ContainsKey(hash))
+            {
+                Blacklist.Remove(hash);
+            }
+        }
+
+        public void ClearProcessConfig(string name)
+        {
+            int hash = name.Trim().ToLower().GetHashCode();
+            ClearProcessConfig(hash);
+        }
+
+        public void ClearHighPerformanceProcessList()
+        {
+            HighPerformanceProcesses.Clear();
+        }
+        public void ClearCustomPerformanceProcessList()
+        {
+            CustomPerformanceProcesses.Clear();
+            CustomPerformanceHashToNameDictionary.Clear();
+        }
+        public void ClearBlacklist()
+        {
+            Blacklist.Clear();
         }
     }
 }

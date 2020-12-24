@@ -110,8 +110,7 @@ namespace PACTWPF
 
             ProcessPriorityClass priority = (ProcessPriorityClass)ComboBox_PrioritySelect.SelectedItem ;
 
-            ProcessConfig conf = new ProcessConfig(cores);
-            conf.Priority = priority;
+            ProcessConfig conf = new ProcessConfig(cores, priority);
 
             return conf;
         }

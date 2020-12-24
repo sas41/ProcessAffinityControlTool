@@ -125,25 +125,28 @@ namespace PACTCore
             IntPtr mask;
             ProcessPriorityClass priority;
 
-            string normalizedName = process.ProcessName.ToLower();
-            List<string> normalizedList = Config.HighPriorityProcessList.Select(x => x.ToLower()).ToList();
-            Dictionary<string, string> normalizedDictionary = Config.CustomPriorityProcessList.ToDictionary(x => x.Key.ToLower(), x => x.Key);
+            string processName = process.ProcessName;
 
-            if (normalizedDictionary.ContainsKey(normalizedName))
+            if (Config.CheckIfProcessIsBlacklisted(processName))
             {
-                string dictionaryName = normalizedDictionary[normalizedName];
-                mask = (IntPtr)Config.CustomPriorityProcessList[dictionaryName].AffinityMask;
-                priority = Config.CustomPriorityProcessList[dictionaryName].Priority;
+                return;
             }
-            else if (normalizedList.Contains(normalizedName))
+
+            if (Config.CheckIfProcessIsCustomPerformance(processName))
             {
-                mask = (IntPtr)Config.HighPriorityProcessConfig.AffinityMask;
-                priority = Config.HighPriorityProcessConfig.Priority;
+                ProcessConfig conf = Config.GetCustomPerformanceConfig(processName);
+                mask = (IntPtr)conf.AffinityMask;
+                priority = conf.Priority;
+            }
+            else if (Config.CheckIfProcessIsHighPerformance(processName))
+            {
+                mask = (IntPtr)Config.HighPerformanceProcessConfig.AffinityMask;
+                priority = Config.HighPerformanceProcessConfig.Priority;
             }
             else
             {
-                mask = (IntPtr)Config.DefaultPriorityProcessConfig.AffinityMask;
-                priority = Config.DefaultPriorityProcessConfig.Priority;
+                mask = (IntPtr)Config.DefaultPerformanceProcessConfig.AffinityMask;
+                priority = Config.DefaultPerformanceProcessConfig.Priority;
             }
 
             // Set Process Affinity

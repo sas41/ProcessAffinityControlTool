@@ -35,6 +35,10 @@ namespace PACTWPF
         private PerformanceCounter TotalCPUUsage;
         private static DispatcherTimer PerformanceStatisticsUpdateTimer;
 
+        private readonly CollectionViewSource normalViewSource = new CollectionViewSource();
+        private readonly CollectionViewSource hpViewSource = new CollectionViewSource();
+        private readonly CollectionViewSource customViewSource = new CollectionViewSource();
+        private readonly CollectionViewSource blacklistViewSource = new CollectionViewSource();
 
 
         public MainWindow()
@@ -126,104 +130,98 @@ namespace PACTWPF
 
             // It's 8 AM, haven't slept yet.
             // Todo: Find a better way to calculate these.
-            var allRunningProcesses = PACTInstance.GetRunningProcesses().Select(x => x.ToLower()).ToList();
+            var allRunningProcesses = PACTInstance.GetAllRunningProcesses().Select(x => x.ToLower()).ToList();
 
-            var highPriorityProcesses = allRunningProcesses.Intersect(PACTInstance.GetHighPriorityProcesses().Select(x => x.ToLower())).Count();
+            var HighPerformanceProcesses = allRunningProcesses.Intersect(PACTInstance.GetHighPerformanceProcesses().Select(x => x.ToLower())).Count();
             var exceptionPriorityProcesses = allRunningProcesses.Intersect(PACTInstance.GetCustomProcesses().Select(x => x.ToLower())).Count();
             var inaccessibleProcesses = PACTInstance.GetProtectedProcesses().Count();
 
             Total_Process_Count_Label.Content = allRunningProcesses.Count;
-            Active_High_Priority_Process_Count_Label.Content = highPriorityProcesses;
-            Active_Exceptions_Count_Label.Content = exceptionPriorityProcesses;
+            Active_High_Performance_Process_Count_Label.Content = HighPerformanceProcesses;
+            Active_Custom_Count_Label.Content = exceptionPriorityProcesses;
             Inaccessible_Process_Count_Label.Content = inaccessibleProcesses;
         }
 
-        ////////////////////////////////////////////////////////////////////////////
-
-        private void ListBox_HighPriority_Initialized(object sender, EventArgs e)
+        private void Button_Toggle_Click(object sender, RoutedEventArgs e)
         {
-            ListBox_HighPriority.Items.Clear();
-            foreach (var hpp in PACTInstance.GetHighPriorityProcesses())
+            if (PACTInstance.ToggleProcessOverwatch())
             {
-                ListBox_HighPriority.Items.Add(hpp);
+                Label_ToggleStatus.Content = "PACT is ACTIVE";
             }
-        }
-
-        private void ListBox_HighPriority_SelectionChanged(object sender, EventArgs e)
-        {
-            Button_HighPriority_Remove.IsEnabled = true;
-            Button_HighPriority_MoveToException.IsEnabled = true;
-        }
-
-        private void Button_HighPriority_Configure_Click(object sender, RoutedEventArgs e)
-        {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = "[High Priority Processes]";
-            ProcessConfig conf;
-            if (window.ShowDialog() == true)
+            else
             {
-                conf = window.GenerateConfig();
-                PACTInstance.UpdateHighPriorityProcessConfig(conf);
-            }
-        }
-
-        private void Button_HighPriority_MoveToException_Click(object sender, RoutedEventArgs e)
-        {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = ListBox_HighPriority.SelectedItem.ToString();
-            ProcessConfig conf;
-            if (window.ShowDialog() == true)
-            {
-                conf = window.GenerateConfig();
-                PACTInstance.AddToCustomPriority(window.TargetProcessOrGroup, conf);
-            }
-            TriggerListUpdate();
-        }
-
-        private void Button_HighPriority_AddManual_Click(object sender, RoutedEventArgs e)
-        {
-            ProcessNameEntryWindow window = new ProcessNameEntryWindow();
-            if (window.ShowDialog() == true)
-            {
-                PACTInstance.AddToHighPriority(window.ProcessName);
-            }
-            TriggerListUpdate();
-        }
-
-        private void Button_HighPriority_Remove_Click(object sender, RoutedEventArgs e)
-        {
-            PACTInstance.Clear(ListBox_HighPriority.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void ListBox_HighPriority_Validate()
-        {
-            if (ListBox_HighPriority.SelectedItem == null)
-            {
-                Button_HighPriority_MoveToException.IsEnabled = false;
-                Button_HighPriority_Remove.IsEnabled = false;
+                Label_ToggleStatus.Content = "PACT is PAUSED";
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////
+        ////                           Configure Tab                            ////
+        ////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////
 
-        private void ListBox_Normal_Initialized(object sender, EventArgs e)
+        bool ProcessSearchFilter(object obj)
         {
-            ListBox_Normal.Items.Clear();
-            foreach (var hpp in PACTInstance.GetRunningProcesses().Distinct())
+            if (Configure_Search.Text != null && Configure_Search.Text != "")
             {
-                ListBox_Normal.Items.Add(hpp);
+                return (obj as string).ToLower().StartsWith(Configure_Search.Text.ToLower());
+            }
+            else
+            {
+                return true;
             }
         }
 
-        private void ListBox_Normal_SelectionChanged(object sender, EventArgs e)
+        private void Configure_Search_TextChanged(object sender, TextChangedEventArgs e)
         {
-            Button_Normal_MoveToHighPriority.IsEnabled = true;
-            Button_Normal_MoveToException.IsEnabled = true;
+            TriggerListUpdate();
+
         }
 
-        private void Button_Normal_Refresh_Click(object sender, RoutedEventArgs e)
+        private void Button_Refresh_Click(object sender, RoutedEventArgs e)
         {
+            TriggerListUpdate();
+        }
+
+        private void TriggerListUpdate()
+        {
+            ListView_Normal_Initialized(this, null);
+            ListView_HighPerformance_Initialized(this, null);
+            ListView_Custom_Initialized(this, null);
+            ListView_Blacklist_Initialized(this, null);
+
+            ListView_Normal_Validate();
+            ListView_HighPerformance_Validate();
+            ListView_Custom_Validate();
+            ListView_Blacklist_Validate();
+        }
+
+        ////////////////////////////////////////////////////////////////////////////
+        //                     Normal Performance Column                          //
+        ////////////////////////////////////////////////////////////////////////////
+
+        private void ListView_Normal_Initialized(object sender, EventArgs e)
+        {
+            ListView_Normal.Items.Clear();
+            foreach (var hpp in PACTInstance.GetNormalPerformanceProcesses())
+            {
+                ListView_Normal.Items.Add(hpp);
+            }
+
+            ListView_Normal.Items.Filter = ProcessSearchFilter;
+        }
+
+        private void ListView_Normal_SelectionChanged(object sender, EventArgs e)
+        {
+            Button_Normal_MoveToBlacklist.IsEnabled = true;
+            Button_Normal_MoveToHighPerformance.IsEnabled = true;
+            Button_Normal_MoveToCustom.IsEnabled = true;
+        }
+
+
+        private void Button_Normal_MoveToBlacklist_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.AddToBlacklist(ListView_Normal.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
@@ -241,10 +239,10 @@ namespace PACTWPF
             TriggerListUpdate();
         }
 
-        private void Button_Normal_MoveToException_Click(object sender, RoutedEventArgs e)
+        private void Button_Normal_MoveToCustom_Click(object sender, RoutedEventArgs e)
         {
             ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = ListBox_Normal.SelectedItem.ToString();
+            window.TargetProcessOrGroup = ListView_Normal.SelectedItem.ToString();
             ProcessConfig conf;
             if (window.ShowDialog() == true)
             {
@@ -255,85 +253,325 @@ namespace PACTWPF
             TriggerListUpdate();
         }
 
-        private void Button_Normal_MoveToHighPriority_Click(object sender, RoutedEventArgs e)
+        private void Button_Normal_MoveToHighPerformance_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.AddToHighPriority(ListBox_Normal.SelectedItem.ToString());
+            PACTInstance.AddToHighPerformance(ListView_Normal.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
-        private void ListBox_Normal_Validate()
+        private void ListView_Normal_Validate()
         {
-            if (ListBox_Normal.SelectedItem == null)
+            if (ListView_Normal.SelectedItem == null)
             {
-                Button_Normal_MoveToException.IsEnabled = false;
-                Button_Normal_MoveToHighPriority.IsEnabled = false;
+                Button_Normal_MoveToBlacklist.IsEnabled = false;
+                Button_Normal_MoveToHighPerformance.IsEnabled = false;
+                Button_Normal_MoveToCustom.IsEnabled = false;
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////
-
-        private void ListBox_Exceptions_Initialized(object sender, EventArgs e)
+        //                       High Performance Column                          //
+        ////////////////////////////////////////////////////////////////////////////
+        
+        private void ListView_HighPerformance_Initialized(object sender, EventArgs e)
         {
-            ListBox_Exceptions.Items.Clear();
-            foreach (var hpp in PACTInstance.GetCustomProcesses())
+            ListView_HighPerformance.Items.Clear();
+            foreach (var hpp in PACTInstance.GetHighPerformanceProcesses())
             {
-                ListBox_Exceptions.Items.Add(hpp);
+                ListView_HighPerformance.Items.Add(hpp);
             }
+
+            ListView_HighPerformance.Items.Filter = ProcessSearchFilter;
         }
 
-        private void ListBox_Exceptions_SelectionChanged(object sender, EventArgs e)
+        private void ListView_HighPerformance_SelectionChanged(object sender, EventArgs e)
         {
-            Button_Exceptions_Configure.IsEnabled = true;
-            Button_Exceptions_MoveToHighPriority.IsEnabled = true;
-            Button_Exceptions_Remove.IsEnabled = true;
+            Button_HighPerformance_Remove.IsEnabled = true;
+            Button_HighPerformance_MoveToCustom.IsEnabled = true;
         }
 
-        private void Button_Exceptions_Configure_Click(object sender, RoutedEventArgs e)
+        private void Button_HighPerformance_Configure_Click(object sender, RoutedEventArgs e)
         {
             ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = ListBox_Exceptions.SelectedItem.ToString();
+            window.TargetProcessOrGroup = "[High Priority Processes]";
             ProcessConfig conf;
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
-                PACTInstance.UpdateCustomPriorityProcessConfig(ListBox_Exceptions.SelectedItem.ToString(), conf);
+                PACTInstance.UpdateHighPerformanceProcessConfig(conf);
+            }
+        }
+
+        private void Button_HighPerformance_MoveToCustom_Click(object sender, RoutedEventArgs e)
+        {
+            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
+            window.TargetProcessOrGroup = ListView_HighPerformance.SelectedItem.ToString();
+            ProcessConfig conf;
+            if (window.ShowDialog() == true)
+            {
+                conf = window.GenerateConfig();
+                PACTInstance.AddToCustomPriority(window.TargetProcessOrGroup, conf);
             }
             TriggerListUpdate();
         }
 
-        private void Button_Exceptions_MoveToHighPriority_Click(object sender, RoutedEventArgs e)
+        private void Button_HighPerformance_AddManual_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.AddToHighPriority(ListBox_Exceptions.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void Button_Exceptions_Remove_Click(object sender, RoutedEventArgs e)
-        {
-            PACTInstance.Clear(ListBox_Exceptions.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void ListBox_Exceptions_Validate()
-        {
-            if (ListBox_Exceptions.SelectedItem == null)
+            ProcessNameEntryWindow window = new ProcessNameEntryWindow();
+            if (window.ShowDialog() == true)
             {
-                Button_Exceptions_Configure.IsEnabled = false;
-                Button_Exceptions_MoveToHighPriority.IsEnabled = false;
-                Button_Exceptions_Remove.IsEnabled = false;
+                PACTInstance.AddToHighPerformance(window.ProcessName);
+            }
+            TriggerListUpdate();
+        }
+
+        private void Button_HighPerformance_Remove_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.ClearProcess(ListView_HighPerformance.SelectedItem.ToString());
+            TriggerListUpdate();
+        }
+
+        private void ListView_HighPerformance_Validate()
+        {
+            if (ListView_HighPerformance.SelectedItem == null)
+            {
+                Button_HighPerformance_MoveToCustom.IsEnabled = false;
+                Button_HighPerformance_Remove.IsEnabled = false;
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////
+        //                       Custom Performance Column                        //
+        ////////////////////////////////////////////////////////////////////////////
 
-        private void TriggerListUpdate()
+        private void ListView_Custom_Initialized(object sender, EventArgs e)
         {
-            ListBox_HighPriority_Initialized(this, null);
-            ListBox_Normal_Initialized(this, null);
-            ListBox_Exceptions_Initialized(this, null);
+            ListView_Custom.Items.Clear();
+            foreach (var hpp in PACTInstance.GetCustomProcesses())
+            {
+                ListView_Custom.Items.Add(hpp);
+            }
 
-            ListBox_HighPriority_Validate();
-            ListBox_Normal_Validate();
-            ListBox_Exceptions_Validate();
+            ListView_Custom.Items.Filter = ProcessSearchFilter;
+        }
+
+        private void ListView_Custom_SelectionChanged(object sender, EventArgs e)
+        {
+            Button_Custom_Configure.IsEnabled = true;
+            Button_Custom_MoveToHighPerformance.IsEnabled = true;
+            Button_Custom_Remove.IsEnabled = true;
+        }
+
+        private void Button_Custom_Configure_Click(object sender, RoutedEventArgs e)
+        {
+            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
+            window.TargetProcessOrGroup = ListView_Custom.SelectedItem.ToString();
+            ProcessConfig conf;
+            if (window.ShowDialog() == true)
+            {
+                conf = window.GenerateConfig();
+                PACTInstance.AddToCustomPriority(ListView_Custom.SelectedItem.ToString(), conf);
+            }
+            TriggerListUpdate();
+        }
+
+        private void Button_Custom_MoveToHighPerformance_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.AddToHighPerformance(ListView_Custom.SelectedItem.ToString());
+            TriggerListUpdate();
+        }
+
+        private void Button_Custom_Remove_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.ClearProcess(ListView_Custom.SelectedItem.ToString());
+            TriggerListUpdate();
+        }
+
+        private void ListView_Custom_Validate()
+        {
+            if (ListView_Custom.SelectedItem == null)
+            {
+                Button_Custom_Configure.IsEnabled = false;
+                Button_Custom_MoveToHighPerformance.IsEnabled = false;
+                Button_Custom_Remove.IsEnabled = false;
+            }
+        }
+
+        ////////////////////////////////////////////////////////////////////////////
+        //                           Blacklist Column                             //
+        ////////////////////////////////////////////////////////////////////////////
+
+        private void ListView_Blacklist_Initialized(object sender, EventArgs e)
+        {
+            ListView_Blacklist.Items.Clear();
+            foreach (var hpp in PACTInstance.GetBlacklistedProcesses())
+            {
+                ListView_Blacklist.Items.Add(hpp);
+            }
+
+            ListView_Blacklist.Items.Filter = ProcessSearchFilter;
+        }
+
+        private void ListView_Blacklist_SelectionChanged(object sender, EventArgs e)
+        {
+            Button_Blacklist_Remove.IsEnabled = true;
+        }
+
+        private void Button_Blacklist_Remove_Click(object sender, RoutedEventArgs e)
+        {
+
+            PACTInstance.ClearProcess(ListView_Blacklist.SelectedItem.ToString());
+            TriggerListUpdate();
+        }
+
+        private void ListView_Blacklist_Validate()
+        {
+            if (ListView_Blacklist.SelectedItem == null)
+            {
+                Button_Blacklist_Remove.IsEnabled = false;
+            }
+        }
+
+        ////////////////////////////////////////////////////////////////////////////
+        //                          Settings/Options Tab                          //
+        ////////////////////////////////////////////////////////////////////////////
+
+
+        private string OpenFile(string defaultExt, string filter)
+        {
+
+            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
+
+            dialog.DefaultExt = defaultExt;
+            dialog.Filter = filter;
+
+            Nullable<bool> result = dialog.ShowDialog();
+
+
+            if (result == true)
+            {
+                return dialog.FileName;
+            }
+
+            return "";
+        }
+
+        private string SaveFile(string defaultExt, string filter)
+        {
+
+            Microsoft.Win32.SaveFileDialog dialog = new Microsoft.Win32.SaveFileDialog();
+
+            dialog.DefaultExt = defaultExt;
+            dialog.Filter = filter;
+
+            Nullable<bool> result = dialog.ShowDialog();
+
+
+            if (result == true)
+            {
+                return dialog.FileName;
+            }
+
+            return "";
+        }
+
+        private void Button_Options_HighPriority_Import_Click(object sender, RoutedEventArgs e)
+        {
+            string path = OpenFile(".txt", "Text Files (*.txt)|*.txt");
+            if (path != "")
+            {
+                PACTInstance.ImportHighPerformance(path);
+            }
+            TriggerListUpdate();
+        }
+
+        private void Button_Options_HighPriority_Export_Click(object sender, RoutedEventArgs e)
+        {
+            string path = SaveFile(".txt", "Text Files (*.txt)|*.txt");
+            if (path != "")
+            {
+                PACTInstance.ExportHighPerformance(path);
+            }
+        }
+
+        private void Button_Options_HighPriority_Clear_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.ClearHighPerformance();
+            TriggerListUpdate();
+        }
+
+
+
+        private void Button_Options_Blacklist_Import_Click(object sender, RoutedEventArgs e)
+        {
+            string path = OpenFile(".txt", "Text Files (*.txt)|*.txt");
+            if (path != "")
+            {
+                PACTInstance.ImportBlacklist(path);
+            }
+            TriggerListUpdate();
+        }
+
+        private void Button_Options_Blacklist_Export_Click(object sender, RoutedEventArgs e)
+        {
+            string path = SaveFile(".txt", "Text Files (*.txt)|*.txt");
+            if (path != "")
+            {
+                PACTInstance.ExportBlacklist(path);
+            }
+        }
+
+        private void Button_Options_Blacklist_Clear_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.ClearBlackList();
+            TriggerListUpdate();
+        }
+
+
+
+        private void Button_Options_Config_Import_Click(object sender, RoutedEventArgs e)
+        {
+            string path = OpenFile(".json", "JSON Files (*.json)|*.json");
+            if (path != "")
+            {
+                PACTInstance.ImportConfig(path);
+            }
+            TriggerListUpdate();
+        }
+
+        private void Button_Options_Config_Export_Click(object sender, RoutedEventArgs e)
+        {
+            string path = SaveFile(".json", "JSON Files (*.json)|*.json");
+            if (path != "")
+            {
+                PACTInstance.ExportConfig(path);
+            }
+        }
+
+        private void Button_Options_Custom_Clear_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.ClearCustoms();
+            TriggerListUpdate();
+        }
+
+
+
+        private void Button_Options_AutoMode_Toggle_Click(object sender, RoutedEventArgs e)
+        {
+            // TODO: Make auto-mode happen.
+        }
+
+
+
+        private void Button_Options_About_Click(object sender, RoutedEventArgs e)
+        {
+            System.Diagnostics.Process.Start("https://github.com/sas41/ProcessAffinityControlTool#readme");
+        }
+
+        private void Button_Options_ResetConfig_Click(object sender, RoutedEventArgs e)
+        {
+            PACTInstance.ResetConfig();
+            TriggerListUpdate();
         }
 
     }

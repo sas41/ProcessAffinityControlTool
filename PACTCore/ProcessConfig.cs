@@ -22,21 +22,19 @@ namespace PACTCore
         public List<int> CoreList { get; private set; }
 
 
-
-        public ProcessConfig(List<int> coreNumbers = null)
+        public ProcessConfig(List<int> coreNumbers = null, ProcessPriorityClass priority = ProcessPriorityClass.Normal)
         {
-            Priority = ProcessPriorityClass.Normal;
-
             if (coreNumbers == null)
             {
-                CoreList = new List<int>();
+                CoreList = Enumerable.Range(0, Environment.ProcessorCount).ToList();
             }
             else
             {
-
                 CoreList = coreNumbers;
                 ReCalculateMask();
             }
+
+            Priority = priority;
         }
 
 

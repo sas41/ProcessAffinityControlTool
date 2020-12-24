@@ -23,7 +23,7 @@ namespace PACTCore
         static PACTInstance()
         {
             PACTProcessOverwatch = new ProcessOverwatch();
-            ActivePACTConfig = ReadConfig();
+            ReadConfig();
             PausedPACTConfig = new PACTConfig();
             IsActive = false;
         }
@@ -51,51 +51,147 @@ namespace PACTCore
             return IsActive;
         }
 
-        public static PACTConfig ReadConfig()
+        public static void ReadConfig()
         {
             string path = AppDomain.CurrentDomain.BaseDirectory;
-            string configPath = path + "config.json";
+            string configPath = path + "/Config/config.json";
+            string json = "";
 
             if (File.Exists(configPath))
             {
-                string json = File.ReadAllText(configPath);
-                PACTConfig tconf = JsonConvert.DeserializeObject<PACTConfig>(json);
-                return tconf;
+                json = File.ReadAllText(configPath);
+                ActivePACTConfig = JsonConvert.DeserializeObject<PACTConfig>(json);
+                return;
             }
 
-            return new PACTConfig();
+            ActivePACTConfig = new PACTConfig();
+
         }
 
         public static void SaveConfig()
         {
             string json = JsonConvert.SerializeObject(ActivePACTConfig, Formatting.Indented);
-            string path = AppDomain.CurrentDomain.BaseDirectory;
+            string path = AppDomain.CurrentDomain.BaseDirectory + "/Config/";
+            (new FileInfo(path)).Directory.Create();
             string configPath = path + "config.json";
             File.WriteAllText(configPath, json);
+            PACTProcessOverwatch.RunScan(true);
         }
 
-        public static PACTConfig ImportConfig(string fullpath)
+        private static void BackupConfig()
+        {
+            string path = $"{AppDomain.CurrentDomain.BaseDirectory}/Config/Backups/{DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss")}/";
+            (new FileInfo(path)).Directory.Create();
+            ExportConfig(path + "/config.json");
+        }
+
+        public static void ImportConfig(string fullpath)
         {
             if (File.Exists(fullpath))
             {
                 string json = File.ReadAllText(fullpath);
                 PACTConfig tconf = JsonConvert.DeserializeObject<PACTConfig>(json);
-                return tconf;
+                ActivePACTConfig = tconf;
             }
             else
             {
                 throw new FileLoadException("Specified Config File Does not exist!");
             }
+
+            SaveConfig();
         }
 
         public static void ExportConfig(string fullpath)
         {
             string json = JsonConvert.SerializeObject(ActivePACTConfig, Formatting.Indented);
-            string path = AppDomain.CurrentDomain.BaseDirectory;
             File.WriteAllText(fullpath, json);
         }
 
-        public static IReadOnlyList<string> GetRunningProcesses()
+        public static void ImportHighPerformance(string fullpath)
+        {
+            BackupConfig();
+            if (File.Exists(fullpath))
+            {
+                List<string> lines = File.ReadAllLines(fullpath).ToList();
+                foreach (var line in lines)
+                {
+                    ActivePACTConfig.AddOrUpdate(line);
+                }
+                PACTProcessOverwatch.RunScan(true);
+            }
+            else
+            {
+                throw new FileLoadException("Specified File Does not exist!");
+            }
+
+            SaveConfig();
+        }
+
+        public static void ExportHighPerformance(string fullpath)
+        {
+            File.WriteAllLines(fullpath, ActivePACTConfig.GetHighPerformanceProcesses());
+        }
+
+        public static void ImportBlacklist(string fullpath)
+        {
+            BackupConfig();
+
+            if (File.Exists(fullpath))
+            {
+                List<string> lines = File.ReadAllLines(fullpath).ToList();
+                foreach (var line in lines)
+                {
+                    ActivePACTConfig.AddToBlacklist(line);
+                }
+            }
+            else
+            {
+                throw new FileLoadException("Specified File Does not exist!");
+            }
+
+            SaveConfig();
+        }
+
+        public static void ExportBlacklist(string fullpath)
+        {
+            File.WriteAllLines(fullpath, ActivePACTConfig.GetBlacklistedProcesses());
+        }
+
+        public static void ClearHighPerformance()
+        {
+            BackupConfig();
+            var list = GetHighPerformanceProcesses();
+            ActivePACTConfig.ClearHighPerformanceProcessList();
+            SaveConfig();
+        }
+
+        public static void ClearCustoms()
+        {
+            BackupConfig();
+            var list = GetCustomProcesses();
+            ActivePACTConfig.ClearCustomPerformanceProcessList();
+            SaveConfig();
+        }
+
+        public static void ClearBlackList()
+        {
+            BackupConfig();
+            var list = GetBlacklistedProcesses();
+            ActivePACTConfig.ClearBlacklist();
+            SaveConfig();
+        }
+
+        public static void ResetConfig()
+        {
+            BackupConfig();
+            ActivePACTConfig = new PACTConfig();
+            SaveConfig();
+        }
+
+
+
+
+        public static IReadOnlyList<string> GetAllRunningProcesses()
         {
             // Todo: This is cursed.
             // Needs to be re-written so that it can return exe names
@@ -105,64 +201,86 @@ namespace PACTCore
                 .ToList() as IReadOnlyList<string>;
         }
 
-        public static IReadOnlyList<string> GetHighPriorityProcesses()
-        {
-            return ActivePACTConfig.HighPriorityProcessList.OrderBy(x => x).ToList() as IReadOnlyList<string>;
-        }
-
-        public static IReadOnlyList<string> GetCustomProcesses()
-        {
-            return ActivePACTConfig.CustomPriorityProcessList.Keys.OrderBy(x => x).ToList() as IReadOnlyList<string>;
-        }
-
         public static IReadOnlyList<string> GetProtectedProcesses()
         {
             return PACTProcessOverwatch.ProtectedProcesses.Select(x => x.ProcessName).OrderBy(x => x).ToList() as IReadOnlyList<string>;
         }
 
-        public static void AddToHighPriority(string name)
+        public static IReadOnlyList<string> GetNormalPerformanceProcesses()
         {
-            ActivePACTConfig.AddToHighPriority(name);
+            // What a mess
+
+            var allProcesses = GetAllRunningProcesses().Distinct().ToList();
+            var normalizedDistinct = GetAllRunningProcesses().Select(x => x.ToLower()).Distinct().ToList();
+            var highPerformances = GetHighPerformanceProcesses().Select(x => x.ToLower()).ToList();
+            var customPerformances = GetCustomProcesses().Select(x => x.ToLower()).ToList();
+            var blacklisted = GetBlacklistedProcesses().Select(x => x.ToLower()).ToList();
+
+            var filtered = allProcesses.Where(x => (highPerformances.Contains(x.ToLower()) || customPerformances.Contains(x.ToLower()) || blacklisted.Contains(x.ToLower())) == false );
+
+            return filtered.ToList() as IReadOnlyList<string>;
+        }
+
+        public static IReadOnlyList<string> GetHighPerformanceProcesses()
+        {
+            return PACTProcessOverwatch.Config.GetHighPerformanceProcesses().OrderBy(x => x).ToList();
+        }
+
+        public static IReadOnlyList<string> GetCustomProcesses()
+        {
+            return PACTProcessOverwatch.Config.GetCustomPerformanceProcessConfigs().OrderBy(x => x).ToList();
+        }
+
+        public static IReadOnlyList<string> GetBlacklistedProcesses()
+        {
+            return PACTProcessOverwatch.Config.GetBlacklistedProcesses().OrderBy(x => x).ToList();
+        }
+
+
+
+
+        public static void AddToBlacklist(string name)
+        {
+            ActivePACTConfig.AddToBlacklist(name);
+            PACTProcessOverwatch.RunScan(true);
+            SaveConfig();
+        }
+
+        public static void AddToHighPerformance(string name)
+        {
+            ActivePACTConfig.AddOrUpdate(name);
             PACTProcessOverwatch.RunScan(true);
             SaveConfig();
         }
 
         public static void AddToCustomPriority(string name, ProcessConfig conf)
         {
-            ActivePACTConfig.AddToCustomPriority(name, conf);
+            ActivePACTConfig.AddOrUpdate(name, conf);
             PACTProcessOverwatch.RunScan(true);
             SaveConfig();
         }
 
-        public static void Clear(string name)
+        public static void ClearProcess(string name)
         {
-            ActivePACTConfig.Clear(name);
+            ActivePACTConfig.ClearProcessConfig(name);
             PACTProcessOverwatch.RunScan(true);
             SaveConfig();
         }
 
-        public static void UpdateHighPriorityProcessConfig(ProcessConfig conf)
+        public static void UpdateHighPerformanceProcessConfig(ProcessConfig conf)
         {
-            ActivePACTConfig.HighPriorityProcessConfig = conf;
+            ActivePACTConfig.HighPerformanceProcessConfig = conf;
             PACTProcessOverwatch.RunScan(true);
             SaveConfig();
         }
 
         public static void UpdateDefaultPriorityProcessConfig(ProcessConfig conf)
         {
-            ActivePACTConfig.DefaultPriorityProcessConfig = conf;
+            ActivePACTConfig.DefaultPerformanceProcessConfig = conf;
             PACTProcessOverwatch.RunScan(true);
             SaveConfig();
         }
 
-        public static void UpdateCustomPriorityProcessConfig(string name, ProcessConfig conf)
-        {
-            if (ActivePACTConfig.CustomPriorityProcessList.ContainsKey(name))
-            {
-                ActivePACTConfig.CustomPriorityProcessList[name] = conf;
-                PACTProcessOverwatch.RunScan(true);
-                SaveConfig();
-            }
-        }
+
     }
 }
