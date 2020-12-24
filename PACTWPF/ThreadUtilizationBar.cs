@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
+using System.Windows.Media;
 
 namespace PACTWPF
 {
@@ -16,6 +17,7 @@ namespace PACTWPF
         public Label CustomLabel { get; set; }
 
         private static TimeSpan duration = TimeSpan.FromMilliseconds(1000);
+
         public ThreadUtilizationBar(int threadNumber) : base()
         {
             Orientation = Orientation.Vertical;
@@ -32,13 +34,34 @@ namespace PACTWPF
             CustomLabel.FontSize = CustomLabel.FontSize * 2;
         }
 
-        public void UpdateUtilization()
+        public void UpdateUtilization(bool isNormal, bool isHigh)
         {
+            AutoSetColor(isNormal, isHigh);
             double percentage = BoundCounter.NextValue();
             DoubleAnimation animation = new DoubleAnimation(percentage, duration);
             this.BeginAnimation(ProgressBar.ValueProperty, animation);
             CustomLabel.Content = $"Thread {AssociatedThreadNumber}:{Environment.NewLine}{percentage.ToString("0")}%";
 
+        }
+
+        public void AutoSetColor(bool isNormal, bool isHigh)
+        {
+            if (isNormal && isHigh)
+            {
+                this.Foreground = Brushes.Red;
+            }
+            else if(isNormal)
+            {
+                this.Foreground = Brushes.Yellow;
+            }
+            else if (isNormal)
+            {
+                this.Foreground = Brushes.Blue;
+            }
+            else
+            {
+                this.Foreground = Brushes.Green;
+            }
         }
     }
 }

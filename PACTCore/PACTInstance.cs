@@ -236,6 +236,15 @@ namespace PACTCore
             return PACTProcessOverwatch.Config.GetBlacklistedProcesses().OrderBy(x => x).ToList();
         }
 
+        public static IReadOnlyList<int> GetHighPerformanceCores()
+        {
+            return PACTProcessOverwatch.Config.HighPerformanceProcessConfig.CoreList;
+        }
+        public static IReadOnlyList<int> GetNormalPerformanceCores()
+        {
+            return PACTProcessOverwatch.Config.DefaultPerformanceProcessConfig.CoreList;
+        }
+
 
 
 

@@ -4,11 +4,38 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StartupObject>PACTWPF.App</StartupObject>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <Version>2.0.0</Version>
+    <PackageIcon>icon.ico</PackageIcon>
+    <PackageProjectUrl>https://github.com/sas41/ProcessAffinityControlTool</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sas41/ProcessAffinityControlTool</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+    <Copyright />
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="icon.png">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </Resource>
+    <Resource Include="icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PACTCore\PACTCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="tray.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

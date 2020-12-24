@@ -74,6 +74,7 @@ namespace PACTCore
         // Normal scans only fiddle with processes that are new compared to the last normal scan.
         private void RunNormalScan()
         {
+            ProtectedProcesses.Clear();
             foreach (var process in Process.GetProcesses())
             {
                 int hash = process.GetHashCode();
@@ -87,10 +88,7 @@ namespace PACTCore
                 }
                 catch (Exception e)
                 {
-                    if (!ProtectedProcesses.Contains(process))
-                    {
-                        ProtectedProcesses.Add(process);
-                    }
+                    ProtectedProcesses.Add(process);
                 }
             }
         }

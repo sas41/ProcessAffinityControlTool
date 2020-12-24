@@ -14,6 +14,9 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Diagnostics;
+using System.Drawing;
+using System.Windows.Forms;
+using System.IO;
 using PACTCore;
 using Newtonsoft.Json;
 
@@ -24,13 +27,7 @@ namespace PACTWPF
     /// </summary>
     public partial class MainWindow : Window
     {
-        static MainWindow()
-        {
-            PACTInstance.ToggleProcessOverwatch();
-        }
-
-
-
+        private NotifyIcon TrayIcon;
         private List<ThreadUtilizationBar> ThreadBars { get; set; }
         private PerformanceCounter TotalCPUUsage;
         private static DispatcherTimer PerformanceStatisticsUpdateTimer;
@@ -43,13 +40,53 @@ namespace PACTWPF
 
         public MainWindow()
         {
+            PACTInstance.ToggleProcessOverwatch();
             ThreadBars = new List<ThreadUtilizationBar>();
             TotalCPUUsage = new PerformanceCounter("Processor", "% Processor Time", "_Total");
             InitializeComponent();
             InitializePerformanceStatisticsUpdateTimer();
+            InitTrayIcon();
         }
 
+        public void InitTrayIcon()
+        {
+            TrayIcon = new NotifyIcon();
+            TrayIcon.Icon = new Icon("tray.ico");
+            TrayIcon.Text = "Click to bring PACT back.";
+            TrayIcon.Visible = true;
 
+            TrayIcon.BalloonTipIcon = new ToolTipIcon();
+            TrayIcon.BalloonTipTitle = "PACT for Windows";
+            TrayIcon.BalloonTipText = "PACT is minimized to tray.";
+
+            TrayIcon.Click += TrayIcon_Clicked;
+        }
+
+        public void TrayIcon_Clicked(object sender, EventArgs args)
+        {
+            this.Show();
+            this.WindowState = WindowState.Normal;
+        }
+
+        private void Window_StateChanged(object sender, EventArgs e)
+        {
+            if (this.WindowState == WindowState.Minimized)
+            {
+                PerformanceStatisticsUpdateTimer.Stop();
+                TrayIcon.ShowBalloonTip(5000);
+                this.Hide();
+            }
+            else
+            {
+                PerformanceStatisticsUpdateTimer.Start();
+                this.Show();
+            }
+        }
+
+        private void Window_Closed(object sender, EventArgs e)
+        {
+            TrayIcon.Dispose();
+        }
 
         private void Grid_Status_CPU_Initialized(object sender, EventArgs e)
         {
@@ -119,17 +156,20 @@ namespace PACTWPF
 
         private void UpdatePerformanceStatistics(Object source, EventArgs e)
         {
+            // Converting the coloring process to events is the right thing to do.
+            // For now, as it's not intended to run out-of tray for long, this is acceptable.
+            // TODO: Convert the coloring process to an event.
+            var highs = PACTInstance.GetHighPerformanceCores();
+            var normals = PACTInstance.GetNormalPerformanceCores();
             // Update CPU Utilization Values
-            foreach (var bar in ThreadBars)
+            for (int i = 0; i < ThreadBars.Count; i++)
             {
-                bar.UpdateUtilization();
+               var bar = ThreadBars[i];
+                bar.UpdateUtilization(normals.Contains(i), highs.Contains(i));
             }
 
             Total_CPU_Usage_Label.Content = $"{TotalCPUUsage.NextValue().ToString("0")}%";
 
-
-            // It's 8 AM, haven't slept yet.
-            // Todo: Find a better way to calculate these.
             var allRunningProcesses = PACTInstance.GetAllRunningProcesses().Select(x => x.ToLower()).ToList();
 
             var HighPerformanceProcesses = allRunningProcesses.Intersect(PACTInstance.GetHighPerformanceProcesses().Select(x => x.ToLower())).Count();
@@ -416,10 +456,18 @@ namespace PACTWPF
         {
             Button_Blacklist_Remove.IsEnabled = true;
         }
+        private void Button_Blacklist_Add_Click(object sender, RoutedEventArgs e)
+        {
+            ProcessNameEntryWindow window = new ProcessNameEntryWindow();
+            if (window.ShowDialog() == true)
+            {
+                PACTInstance.AddToBlacklist(window.ProcessName);
+            }
+            TriggerListUpdate();
+        }
 
         private void Button_Blacklist_Remove_Click(object sender, RoutedEventArgs e)
         {
-
             PACTInstance.ClearProcess(ListView_Blacklist.SelectedItem.ToString());
             TriggerListUpdate();
         }
@@ -439,16 +487,13 @@ namespace PACTWPF
 
         private string OpenFile(string defaultExt, string filter)
         {
-
-            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
+            OpenFileDialog dialog = new OpenFileDialog();
 
             dialog.DefaultExt = defaultExt;
             dialog.Filter = filter;
+            dialog.RestoreDirectory = true;
 
-            Nullable<bool> result = dialog.ShowDialog();
-
-
-            if (result == true)
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 return dialog.FileName;
             }
@@ -458,16 +503,13 @@ namespace PACTWPF
 
         private string SaveFile(string defaultExt, string filter)
         {
-
-            Microsoft.Win32.SaveFileDialog dialog = new Microsoft.Win32.SaveFileDialog();
+            SaveFileDialog dialog = new SaveFileDialog();
 
             dialog.DefaultExt = defaultExt;
             dialog.Filter = filter;
+            dialog.RestoreDirectory = true;
 
-            Nullable<bool> result = dialog.ShowDialog();
-
-
-            if (result == true)
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 return dialog.FileName;
             }
