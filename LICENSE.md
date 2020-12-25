@@ -1,24 +1,34 @@
 IMPORTANT NOTICE!
 Different projects in this repository have different licenses.
 PACTUniversal and PACTWPF are considered a single project thus share
-the same license
+the same license.
 
 Summary:
+
 PACTCore				- The MIT License (MIT)
+
 Newtonsoft.JSON			- The MIT License (MIT)
+
 PACTUniversal &	PACTWPF	- Limited Personal Use
 
+----------------------------------------------
 PACTCore Relies on the following technologies:
  - Newtonsoft.Json
 
 
 
+
+----------------------------------------------
 Licenses:
 
 Project: PACTCore
+
 Author: Berk Alyamach (SAS41)
+
 Project Source: https://github.com/sas41/ProcessAffinityControlTool
+
 License: The MIT License (MIT)
+
 
 The MIT License (MIT)
 
@@ -42,11 +52,17 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+----------------------------------------------
+
 
 Project: Newtonsoft.JSON
+
 Author: James Newton-King (JamesNK)
+
 Project Source: https://github.com/JamesNK/Newtonsoft.Json
+
 License: The MIT License (MIT)
+
 
 The MIT License (MIT)
 
@@ -70,11 +86,17 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+----------------------------------------------
+
 
 Project: PACTUniversal and PACTWPF
+
 Author: Berk Alyamach (SAS41)
+
 Project Source: https://github.com/sas41/ProcessAffinityControlTool
+
 License: Limited Personal Use License
+
 
 Limited Personal Use License
 
