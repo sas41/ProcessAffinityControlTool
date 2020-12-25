@@ -19,7 +19,6 @@ PACTCore Relies on the following technologies:
 
 
 ----------------------------------------------
-Licenses:
 
 Project: PACTCore
 
