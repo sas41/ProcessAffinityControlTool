@@ -34,9 +34,8 @@ namespace PACTWPF
             CustomLabel.FontSize = CustomLabel.FontSize * 2;
         }
 
-        public void UpdateUtilization(bool isNormal, bool isHigh)
+        public void UpdateUtilization()
         {
-            AutoSetColor(isNormal, isHigh);
             double percentage = BoundCounter.NextValue();
             DoubleAnimation animation = new DoubleAnimation(percentage, duration);
             this.BeginAnimation(ProgressBar.ValueProperty, animation);
@@ -54,7 +53,7 @@ namespace PACTWPF
             {
                 this.Foreground = Brushes.Yellow;
             }
-            else if (isNormal)
+            else if (isHigh)
             {
                 this.Foreground = Brushes.Blue;
             }

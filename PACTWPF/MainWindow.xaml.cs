@@ -18,7 +18,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
 using PACTCore;
-using Newtonsoft.Json;
+using System.Runtime.InteropServices;
 
 namespace PACTWPF
 {
@@ -27,10 +27,12 @@ namespace PACTWPF
     /// </summary>
     public partial class MainWindow : Window
     {
+        private static PACTInstance pact;
+        private static DispatcherTimer PerformanceStatisticsUpdateTimer;
+
         private NotifyIcon TrayIcon;
         private List<ThreadUtilizationBar> ThreadBars { get; set; }
         private PerformanceCounter TotalCPUUsage;
-        private static DispatcherTimer PerformanceStatisticsUpdateTimer;
 
         private readonly CollectionViewSource normalViewSource = new CollectionViewSource();
         private readonly CollectionViewSource hpViewSource = new CollectionViewSource();
@@ -38,14 +40,19 @@ namespace PACTWPF
         private readonly CollectionViewSource blacklistViewSource = new CollectionViewSource();
 
 
+
+
         public MainWindow()
         {
-            PACTInstance.ToggleProcessOverwatch();
+            pact = new PACTInstance();
+            pact.ToggleProcessOverwatch();
             ThreadBars = new List<ThreadUtilizationBar>();
             TotalCPUUsage = new PerformanceCounter("Processor", "% Processor Time", "_Total");
             InitializeComponent();
             InitializePerformanceStatisticsUpdateTimer();
             InitTrayIcon();
+            pact.ConfigUpdated += UpdatePerformanceBarColors;
+            UpdatePerformanceBarColors(this, EventArgs.Empty);
         }
 
         public void InitTrayIcon()
@@ -154,27 +161,32 @@ namespace PACTWPF
             PerformanceStatisticsUpdateTimer.Start();
         }
 
-        private void UpdatePerformanceStatistics(Object source, EventArgs e)
+        private void UpdatePerformanceBarColors(object source, EventArgs e)
         {
-            // Converting the coloring process to events is the right thing to do.
-            // For now, as it's not intended to run out-of tray for long, this is acceptable.
-            // TODO: Convert the coloring process to an event.
-            var highs = PACTInstance.GetHighPerformanceCores();
-            var normals = PACTInstance.GetNormalPerformanceCores();
-            // Update CPU Utilization Values
+            var highs = pact.GetHighPerformanceCores();
+            var normals = pact.GetNormalPerformanceCores();
             for (int i = 0; i < ThreadBars.Count; i++)
             {
-               var bar = ThreadBars[i];
-                bar.UpdateUtilization(normals.Contains(i), highs.Contains(i));
+                var bar = ThreadBars[i];
+                bar.AutoSetColor(normals.Contains(i), highs.Contains(i));
+            }
+        }
+
+        private void UpdatePerformanceStatistics(Object source, EventArgs e)
+        {
+            // Update CPU Utilization Values
+            foreach (var bar in ThreadBars)
+            {
+                bar.UpdateUtilization();
             }
 
             Total_CPU_Usage_Label.Content = $"{TotalCPUUsage.NextValue().ToString("0")}%";
 
-            var allRunningProcesses = PACTInstance.GetAllRunningProcesses().Select(x => x.ToLower()).ToList();
+            var allRunningProcesses = pact.GetAllRunningProcesses().Select(x => x.ToLower()).ToList();
 
-            var HighPerformanceProcesses = allRunningProcesses.Intersect(PACTInstance.GetHighPerformanceProcesses().Select(x => x.ToLower())).Count();
-            var exceptionPriorityProcesses = allRunningProcesses.Intersect(PACTInstance.GetCustomProcesses().Select(x => x.ToLower())).Count();
-            var inaccessibleProcesses = PACTInstance.GetProtectedProcesses().Count();
+            var HighPerformanceProcesses = allRunningProcesses.Intersect(pact.GetHighPerformanceProcesses().Select(x => x.ToLower())).Count();
+            var exceptionPriorityProcesses = allRunningProcesses.Intersect(pact.GetCustomProcesses().Select(x => x.ToLower())).Count();
+            var inaccessibleProcesses = pact.GetProtectedProcesses().Count();
 
             Total_Process_Count_Label.Content = allRunningProcesses.Count;
             Active_High_Performance_Process_Count_Label.Content = HighPerformanceProcesses;
@@ -184,7 +196,7 @@ namespace PACTWPF
 
         private void Button_Toggle_Click(object sender, RoutedEventArgs e)
         {
-            if (PACTInstance.ToggleProcessOverwatch())
+            if (pact.ToggleProcessOverwatch())
             {
                 Label_ToggleStatus.Content = "PACT is ACTIVE";
             }
@@ -243,7 +255,7 @@ namespace PACTWPF
         private void ListView_Normal_Initialized(object sender, EventArgs e)
         {
             ListView_Normal.Items.Clear();
-            foreach (var hpp in PACTInstance.GetNormalPerformanceProcesses())
+            foreach (var hpp in pact.GetNormalPerformanceProcesses())
             {
                 ListView_Normal.Items.Add(hpp);
             }
@@ -258,10 +270,9 @@ namespace PACTWPF
             Button_Normal_MoveToCustom.IsEnabled = true;
         }
 
-
         private void Button_Normal_MoveToBlacklist_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.AddToBlacklist(ListView_Normal.SelectedItem.ToString());
+            pact.AddToBlacklist(ListView_Normal.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
@@ -273,7 +284,7 @@ namespace PACTWPF
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
-                PACTInstance.UpdateDefaultPriorityProcessConfig(conf);
+                pact.UpdateDefaultPriorityProcessConfig(conf);
             }
 
             TriggerListUpdate();
@@ -287,7 +298,7 @@ namespace PACTWPF
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
-                PACTInstance.AddToCustomPriority(window.TargetProcessOrGroup, conf);
+                pact.AddToCustomPriority(window.TargetProcessOrGroup, conf);
             }
 
             TriggerListUpdate();
@@ -295,7 +306,7 @@ namespace PACTWPF
 
         private void Button_Normal_MoveToHighPerformance_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.AddToHighPerformance(ListView_Normal.SelectedItem.ToString());
+            pact.AddToHighPerformance(ListView_Normal.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
@@ -316,7 +327,7 @@ namespace PACTWPF
         private void ListView_HighPerformance_Initialized(object sender, EventArgs e)
         {
             ListView_HighPerformance.Items.Clear();
-            foreach (var hpp in PACTInstance.GetHighPerformanceProcesses())
+            foreach (var hpp in pact.GetHighPerformanceProcesses())
             {
                 ListView_HighPerformance.Items.Add(hpp);
             }
@@ -338,7 +349,7 @@ namespace PACTWPF
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
-                PACTInstance.UpdateHighPerformanceProcessConfig(conf);
+                pact.UpdateHighPerformanceProcessConfig(conf);
             }
         }
 
@@ -350,7 +361,7 @@ namespace PACTWPF
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
-                PACTInstance.AddToCustomPriority(window.TargetProcessOrGroup, conf);
+                pact.AddToCustomPriority(window.TargetProcessOrGroup, conf);
             }
             TriggerListUpdate();
         }
@@ -360,14 +371,14 @@ namespace PACTWPF
             ProcessNameEntryWindow window = new ProcessNameEntryWindow();
             if (window.ShowDialog() == true)
             {
-                PACTInstance.AddToHighPerformance(window.ProcessName);
+                pact.AddToHighPerformance(window.ProcessName);
             }
             TriggerListUpdate();
         }
 
         private void Button_HighPerformance_Remove_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ClearProcess(ListView_HighPerformance.SelectedItem.ToString());
+            pact.ClearProcess(ListView_HighPerformance.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
@@ -387,7 +398,7 @@ namespace PACTWPF
         private void ListView_Custom_Initialized(object sender, EventArgs e)
         {
             ListView_Custom.Items.Clear();
-            foreach (var hpp in PACTInstance.GetCustomProcesses())
+            foreach (var hpp in pact.GetCustomProcesses())
             {
                 ListView_Custom.Items.Add(hpp);
             }
@@ -410,20 +421,20 @@ namespace PACTWPF
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
-                PACTInstance.AddToCustomPriority(ListView_Custom.SelectedItem.ToString(), conf);
+                pact.AddToCustomPriority(ListView_Custom.SelectedItem.ToString(), conf);
             }
             TriggerListUpdate();
         }
 
         private void Button_Custom_MoveToHighPerformance_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.AddToHighPerformance(ListView_Custom.SelectedItem.ToString());
+            pact.AddToHighPerformance(ListView_Custom.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
         private void Button_Custom_Remove_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ClearProcess(ListView_Custom.SelectedItem.ToString());
+            pact.ClearProcess(ListView_Custom.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
@@ -444,7 +455,7 @@ namespace PACTWPF
         private void ListView_Blacklist_Initialized(object sender, EventArgs e)
         {
             ListView_Blacklist.Items.Clear();
-            foreach (var hpp in PACTInstance.GetBlacklistedProcesses())
+            foreach (var hpp in pact.GetBlacklistedProcesses())
             {
                 ListView_Blacklist.Items.Add(hpp);
             }
@@ -456,19 +467,20 @@ namespace PACTWPF
         {
             Button_Blacklist_Remove.IsEnabled = true;
         }
+
         private void Button_Blacklist_Add_Click(object sender, RoutedEventArgs e)
         {
             ProcessNameEntryWindow window = new ProcessNameEntryWindow();
             if (window.ShowDialog() == true)
             {
-                PACTInstance.AddToBlacklist(window.ProcessName);
+                pact.AddToBlacklist(window.ProcessName);
             }
             TriggerListUpdate();
         }
 
         private void Button_Blacklist_Remove_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ClearProcess(ListView_Blacklist.SelectedItem.ToString());
+            pact.ClearProcess(ListView_Blacklist.SelectedItem.ToString());
             TriggerListUpdate();
         }
 
@@ -483,7 +495,6 @@ namespace PACTWPF
         ////////////////////////////////////////////////////////////////////////////
         //                          Settings/Options Tab                          //
         ////////////////////////////////////////////////////////////////////////////
-
 
         private string OpenFile(string defaultExt, string filter)
         {
@@ -522,7 +533,7 @@ namespace PACTWPF
             string path = OpenFile(".txt", "Text Files (*.txt)|*.txt");
             if (path != "")
             {
-                PACTInstance.ImportHighPerformance(path);
+                pact.ImportHighPerformance(path);
             }
             TriggerListUpdate();
         }
@@ -532,24 +543,22 @@ namespace PACTWPF
             string path = SaveFile(".txt", "Text Files (*.txt)|*.txt");
             if (path != "")
             {
-                PACTInstance.ExportHighPerformance(path);
+                pact.ExportHighPerformance(path);
             }
         }
 
         private void Button_Options_HighPriority_Clear_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ClearHighPerformance();
+            pact.ClearHighPerformance();
             TriggerListUpdate();
         }
-
-
 
         private void Button_Options_Blacklist_Import_Click(object sender, RoutedEventArgs e)
         {
             string path = OpenFile(".txt", "Text Files (*.txt)|*.txt");
             if (path != "")
             {
-                PACTInstance.ImportBlacklist(path);
+                pact.ImportBlacklist(path);
             }
             TriggerListUpdate();
         }
@@ -559,26 +568,30 @@ namespace PACTWPF
             string path = SaveFile(".txt", "Text Files (*.txt)|*.txt");
             if (path != "")
             {
-                PACTInstance.ExportBlacklist(path);
+                pact.ExportBlacklist(path);
             }
         }
 
         private void Button_Options_Blacklist_Clear_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ClearBlackList();
+            pact.ClearBlackList();
             TriggerListUpdate();
         }
-
-
 
         private void Button_Options_Config_Import_Click(object sender, RoutedEventArgs e)
         {
             string path = OpenFile(".json", "JSON Files (*.json)|*.json");
             if (path != "")
             {
-                PACTInstance.ImportConfig(path);
+                pact.ImportConfig(path);
             }
             TriggerListUpdate();
+            // I don't understand why (yet), but for some reason
+            // the performance bars do not update if Reset
+            // or Import config buttons are pressed.
+            // This harmless hack ensures they update properly. 
+            pact.ToggleProcessOverwatch();
+            pact.ToggleProcessOverwatch();
         }
 
         private void Button_Options_Config_Export_Click(object sender, RoutedEventArgs e)
@@ -586,35 +599,65 @@ namespace PACTWPF
             string path = SaveFile(".json", "JSON Files (*.json)|*.json");
             if (path != "")
             {
-                PACTInstance.ExportConfig(path);
+                pact.ExportConfig(path);
             }
         }
 
         private void Button_Options_Custom_Clear_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ClearCustoms();
+            pact.ClearCustoms();
             TriggerListUpdate();
         }
-
-
 
         private void Button_Options_AutoMode_Toggle_Click(object sender, RoutedEventArgs e)
         {
             // TODO: Make auto-mode happen.
         }
 
-
-
         private void Button_Options_About_Click(object sender, RoutedEventArgs e)
         {
-            System.Diagnostics.Process.Start("https://github.com/sas41/ProcessAffinityControlTool#readme");
+            OpenURL("https://github.com/sas41/ProcessAffinityControlTool#readme");
         }
 
         private void Button_Options_ResetConfig_Click(object sender, RoutedEventArgs e)
         {
-            PACTInstance.ResetConfig();
+            pact.ResetConfig();
             TriggerListUpdate();
+            // I don't understand why (yet), but for some reason
+            // the performance bars do not update if Reset
+            // or Import config buttons are pressed.
+            // This harmless hack ensures they update properly. 
+            pact.ToggleProcessOverwatch();
+            pact.ToggleProcessOverwatch();
         }
 
+        private void OpenURL(string url)
+        {
+            try
+            {
+                Process.Start(url);
+            }
+            catch
+            {
+                // hack because of this: https://github.com/dotnet/corefx/issues/10361
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    url = url.Replace("&", "^&");
+                    Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    Process.Start("xdg-open", url);
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    Process.Start("open", url);
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
     }
 }
