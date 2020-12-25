@@ -104,12 +104,13 @@ Copyright (c) 2020 Berk Alyamach
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software's source code and associated files of the softwares, to modify,
-compile and use the software, provided it is only for non-comercial,personal
+compile and use the software, provided it is only for non-comercial, personal
 use.
 
-Any person who has compiled any version of this software is allowed to use it
-only if it is for non-comercial, personal use. No person may copy, merge,
-publish, distribute, sublicense, and/or sell copies of this software.
+Any person who has compiled any version of this software is allowed to use
+the compiled copy only if it is for non-comercial, personal use.
+No person may copy, merge, publish, distribute, sublicense, and/or sell
+copies of this software.
 
 Any person who has obtained a paid personal use license through official sources
 may use any pre-compiled version of this software for personal, non-comercial
