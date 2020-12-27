@@ -11,19 +11,19 @@ namespace PACTCore
     {
         // Set of EXE names with their corresponding process configs.
         [JsonProperty]
-        private Dictionary<int, ProcessConfig> CustomPerformanceProcesses { get; set; }
+        private Dictionary<ulong, ProcessConfig> CustomPerformanceProcesses { get; set; }
 
         // Set of high performance executable names.
         [JsonProperty]
-        private Dictionary<int, string> CustomPerformanceHashToNameDictionary { get; set; }
+        private Dictionary<ulong, string> CustomPerformanceHashToNameDictionary { get; set; }
 
         // Set of high performance executable names.
         [JsonProperty]
-        private Dictionary<int, string> HighPerformanceProcesses { get; set; }
+        private Dictionary<ulong, string> HighPerformanceProcesses { get; set; }
 
         // Set of blacklisted executable names.
         [JsonProperty]
-        private Dictionary<int, string> Blacklist { get; set; }
+        private Dictionary<ulong, string> Blacklist { get; set; }
 
         // Applies to all high-performance processes.
         [JsonProperty]
@@ -69,12 +69,12 @@ namespace PACTCore
 
 
 
-        public PACTConfig(Dictionary<int, ProcessConfig> customPerformanceProcesses = null, Dictionary<int, string> customPerformanceHashToNameDictionary = null, Dictionary<int, string> highPerformanceProcesses = null, Dictionary<int, string> blacklistedProcesses = null, ProcessConfig highPerformanceProcessConfig = null, ProcessConfig defaultPerformanceProcessConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 20, bool forceAggressiveScan = false)
+        public PACTConfig(Dictionary<ulong, ProcessConfig> customPerformanceProcesses = null, Dictionary<ulong, string> customPerformanceHashToNameDictionary = null, Dictionary<ulong, string> highPerformanceProcesses = null, Dictionary<ulong, string> blacklistedProcesses = null, ProcessConfig highPerformanceProcessConfig = null, ProcessConfig defaultPerformanceProcessConfig = null, int scanInterval = 3000, int aggressiveScanInterval = 20, bool forceAggressiveScan = false)
         {
-            CustomPerformanceProcesses = (customPerformanceProcesses != null) ? customPerformanceProcesses : new Dictionary<int, ProcessConfig>();
-            HighPerformanceProcesses = (highPerformanceProcesses != null) ? highPerformanceProcesses : new Dictionary<int, string>();
-            CustomPerformanceHashToNameDictionary = (customPerformanceHashToNameDictionary != null) ? customPerformanceHashToNameDictionary : new Dictionary<int, string>();
-            Blacklist = (blacklistedProcesses != null) ? blacklistedProcesses : new Dictionary<int, string>();
+            CustomPerformanceProcesses = (customPerformanceProcesses != null) ? customPerformanceProcesses : new Dictionary<ulong, ProcessConfig>();
+            HighPerformanceProcesses = (highPerformanceProcesses != null) ? highPerformanceProcesses : new Dictionary<ulong, string>();
+            CustomPerformanceHashToNameDictionary = (customPerformanceHashToNameDictionary != null) ? customPerformanceHashToNameDictionary : new Dictionary<ulong, string>();
+            Blacklist = (blacklistedProcesses != null) ? blacklistedProcesses : new Dictionary<ulong, string>();
             HighPerformanceProcessConfig = (highPerformanceProcessConfig != null) ? highPerformanceProcessConfig : new ProcessConfig();
             DefaultPerformanceProcessConfig = (defaultPerformanceProcessConfig != null) ? defaultPerformanceProcessConfig : new ProcessConfig();
 
@@ -98,11 +98,10 @@ namespace PACTCore
 
 
         // Data management methods below...
-
         public ProcessConfig GetCustomPerformanceConfig(string name)
         {
             string normalized = name.Trim().ToLower();
-            int key = CustomPerformanceHashToNameDictionary.First(x => x.Value == normalized).Key;
+            ulong key = CustomPerformanceHashToNameDictionary.First(x => x.Value == normalized).Key;
 
             return CustomPerformanceProcesses[key];
         }
@@ -127,33 +126,29 @@ namespace PACTCore
 
         // The three methods below need to be sped up, massively.
         // Hashtable is a must.
-
         public bool CheckIfProcessIsHighPerformance(string name)
         {
-            int hash = name.Trim().ToLower().GetHashCode();
+            ulong hash = PACTHasher.GetUInt64HashCode(name.Trim().ToLower());
             return HighPerformanceProcesses.ContainsKey(hash);
         }
 
         public bool CheckIfProcessIsCustomPerformance(string name)
         {
-            int hash = name.Trim().ToLower().GetHashCode();
+            ulong hash = PACTHasher.GetUInt64HashCode(name.Trim().ToLower());
             return CustomPerformanceProcesses.ContainsKey(hash);
         }
 
         public bool CheckIfProcessIsBlacklisted(string name)
         {
-            int hash = name.Trim().ToLower().GetHashCode();
+            ulong hash = PACTHasher.GetUInt64HashCode(name.Trim().ToLower());
             return Blacklist.ContainsKey(hash);
         }
 
 
 
-
-
-
         public void AddOrUpdate(string name, ProcessConfig conf = null)
         {
-            int hash = name.Trim().ToLower().GetHashCode();
+            ulong hash = PACTHasher.GetUInt64HashCode(name.Trim().ToLower());
             ClearProcessConfig(hash);
 
             if (conf == null)
@@ -169,12 +164,12 @@ namespace PACTCore
 
         public void AddToBlacklist(string name)
         {
-            int hash = name.Trim().ToLower().GetHashCode();
+            ulong hash = PACTHasher.GetUInt64HashCode(name.Trim().ToLower());
             ClearProcessConfig(hash);
             this.Blacklist.Add(hash, name.Trim());
         }
 
-        public void ClearProcessConfig(int hash)
+        public void ClearProcessConfig(ulong hash)
         {
             if (HighPerformanceProcesses.ContainsKey(hash))
             {
@@ -199,7 +194,7 @@ namespace PACTCore
 
         public void ClearProcessConfig(string name)
         {
-            int hash = name.Trim().ToLower().GetHashCode();
+            ulong hash = PACTHasher.GetUInt64HashCode(name.Trim().ToLower());
             ClearProcessConfig(hash);
         }
 
@@ -207,11 +202,13 @@ namespace PACTCore
         {
             HighPerformanceProcesses.Clear();
         }
+
         public void ClearCustomPerformanceProcessList()
         {
             CustomPerformanceProcesses.Clear();
             CustomPerformanceHashToNameDictionary.Clear();
         }
+
         public void ClearBlacklist()
         {
             Blacklist.Clear();
