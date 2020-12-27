@@ -1,24 +1,33 @@
 IMPORTANT NOTICE!
 Different projects in this repository have different licenses.
 PACTUniversal and PACTWPF are considered a single project thus share
-the same license
+the same license.
 
 Summary:
+
 PACTCore				- The MIT License (MIT)
+
 Newtonsoft.JSON			- The MIT License (MIT)
+
 PACTUniversal &	PACTWPF	- Limited Personal Use
 
+----------------------------------------------
 PACTCore Relies on the following technologies:
  - Newtonsoft.Json
 
 
 
-Licenses:
+
+----------------------------------------------
 
 Project: PACTCore
+
 Author: Berk Alyamach (SAS41)
+
 Project Source: https://github.com/sas41/ProcessAffinityControlTool
+
 License: The MIT License (MIT)
+
 
 The MIT License (MIT)
 
@@ -42,11 +51,17 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+----------------------------------------------
+
 
 Project: Newtonsoft.JSON
+
 Author: James Newton-King (JamesNK)
+
 Project Source: https://github.com/JamesNK/Newtonsoft.Json
+
 License: The MIT License (MIT)
+
 
 The MIT License (MIT)
 
@@ -70,11 +85,17 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+----------------------------------------------
+
 
 Project: PACTUniversal and PACTWPF
+
 Author: Berk Alyamach (SAS41)
+
 Project Source: https://github.com/sas41/ProcessAffinityControlTool
+
 License: Limited Personal Use License
+
 
 Limited Personal Use License
 
@@ -82,12 +103,13 @@ Copyright (c) 2020 Berk Alyamach
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software's source code and associated files of the softwares, to modify,
-compile and use the software, provided it is only for non-comercial,personal
+compile and use the software, provided it is only for non-comercial, personal
 use.
 
-Any person who has compiled any version of this software is allowed to use it
-only if it is for non-comercial, personal use. No person may copy, merge,
-publish, distribute, sublicense, and/or sell copies of this software.
+Any person who has compiled any version of this software is allowed to use
+the compiled copy only if it is for non-comercial, personal use.
+No person may copy, merge, publish, distribute, sublicense, and/or sell
+copies of this software.
 
 Any person who has obtained a paid personal use license through official sources
 may use any pre-compiled version of this software for personal, non-comercial
