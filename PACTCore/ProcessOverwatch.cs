@@ -125,18 +125,18 @@ namespace PACTCore
 
             string processName = process.ProcessName;
 
-            if (Config.CheckIfProcessIsBlacklisted(processName))
+            if (Config.Blacklist.Contains(processName))
             {
                 return;
             }
 
-            if (Config.CheckIfProcessIsCustomPerformance(processName))
+            if (Config.CustomPerformanceProcesses.ContainsKey(processName))
             {
-                ProcessConfig conf = Config.GetCustomPerformanceConfig(processName);
+                ProcessConfig conf = Config.HighPerformanceProcessConfig;
                 mask = (IntPtr)conf.AffinityMask;
                 priority = conf.Priority;
             }
-            else if (Config.CheckIfProcessIsHighPerformance(processName))
+            else if (Config.HighPerformanceProcesses.Contains(processName))
             {
                 mask = (IntPtr)Config.HighPerformanceProcessConfig.AffinityMask;
                 priority = Config.HighPerformanceProcessConfig.Priority;

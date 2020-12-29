@@ -1,68 +1,58 @@
 ﻿using System;
-using System.Windows.Threading;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Diagnostics;
-using System.Drawing;
-using System.Windows.Forms;
-using System.IO;
+using System.Windows.Threading;
 using PACTCore;
-using System.Runtime.InteropServices;
 
 namespace PACTWPF
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
+
     public partial class MainWindow : Window
     {
         private static PACTInstance pact;
-        private static DispatcherTimer PerformanceStatisticsUpdateTimer;
+        private static DispatcherTimer UIUpdateTimer;
 
-        private NotifyIcon TrayIcon;
+        private System.Windows.Forms.NotifyIcon TrayIcon;
         private List<ThreadUtilizationBar> ThreadBars { get; set; }
+
         private PerformanceCounter TotalCPUUsage;
-
-        private readonly CollectionViewSource normalViewSource = new CollectionViewSource();
-        private readonly CollectionViewSource hpViewSource = new CollectionViewSource();
-        private readonly CollectionViewSource customViewSource = new CollectionViewSource();
-        private readonly CollectionViewSource blacklistViewSource = new CollectionViewSource();
-
-
-
 
         public MainWindow()
         {
             pact = new PACTInstance();
             pact.ToggleProcessOverwatch();
+
             ThreadBars = new List<ThreadUtilizationBar>();
             TotalCPUUsage = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+
             InitializeComponent();
-            InitializePerformanceStatisticsUpdateTimer();
+            InitializeUIUpdateTimer();
             InitTrayIcon();
+
             pact.ConfigUpdated += UpdatePerformanceBarColors;
             UpdatePerformanceBarColors(this, EventArgs.Empty);
         }
 
+
+
         public void InitTrayIcon()
         {
-            TrayIcon = new NotifyIcon();
+            TrayIcon = new System.Windows.Forms.NotifyIcon();
             TrayIcon.Icon = new Icon("tray.ico");
             TrayIcon.Text = "Click to bring PACT back.";
             TrayIcon.Visible = true;
 
-            TrayIcon.BalloonTipIcon = new ToolTipIcon();
+            TrayIcon.BalloonTipIcon = new System.Windows.Forms.ToolTipIcon();
             TrayIcon.BalloonTipTitle = "PACT for Windows";
             TrayIcon.BalloonTipText = "PACT is minimized to tray.";
 
@@ -79,13 +69,13 @@ namespace PACTWPF
         {
             if (this.WindowState == WindowState.Minimized)
             {
-                PerformanceStatisticsUpdateTimer.Stop();
+                UIUpdateTimer.Stop();
                 TrayIcon.ShowBalloonTip(5000);
                 this.Hide();
             }
             else
             {
-                PerformanceStatisticsUpdateTimer.Start();
+                UIUpdateTimer.Start();
                 this.Show();
             }
         }
@@ -153,18 +143,20 @@ namespace PACTWPF
             }
         }
 
-        public void InitializePerformanceStatisticsUpdateTimer()
+        public void InitializeUIUpdateTimer()
         {
-            PerformanceStatisticsUpdateTimer = new System.Windows.Threading.DispatcherTimer(DispatcherPriority.Render);
-            PerformanceStatisticsUpdateTimer.Interval = new TimeSpan(0, 0, 0, 0, 1000);
-            PerformanceStatisticsUpdateTimer.Tick += new EventHandler(UpdatePerformanceStatistics);
-            PerformanceStatisticsUpdateTimer.Start();
+            UIUpdateTimer = new System.Windows.Threading.DispatcherTimer(DispatcherPriority.Render);
+            UIUpdateTimer.Interval = new TimeSpan(0, 0, 0, 0, 1000);
+            UIUpdateTimer.Tick += new EventHandler(UpdatePerformanceStatistics);
+            UIUpdateTimer.Tick += new EventHandler(TriggerSoftListUpdate);
+
+            UIUpdateTimer.Start();
         }
 
         private void UpdatePerformanceBarColors(object source, EventArgs e)
         {
-            var highs = pact.GetHighPerformanceCores();
-            var normals = pact.GetNormalPerformanceCores();
+            var highs = pact.PACTProcessOverwatch.Config.HighPerformanceProcessConfig.CoreList;
+            var normals = pact.PACTProcessOverwatch.Config.DefaultPerformanceProcessConfig.CoreList;
             for (int i = 0; i < ThreadBars.Count; i++)
             {
                 var bar = ThreadBars[i];
@@ -188,7 +180,7 @@ namespace PACTWPF
             var exceptionPriorityProcesses = allRunningProcesses.Intersect(pact.GetCustomProcesses().Select(x => x.ToLower())).Count();
             var inaccessibleProcesses = pact.GetProtectedProcesses().Count();
 
-            Total_Process_Count_Label.Content = allRunningProcesses.Count;
+            Total_Process_Count_Label.Content = allRunningProcesses.Count();
             Active_High_Performance_Process_Count_Label.Content = HighPerformanceProcesses;
             Active_Custom_Count_Label.Content = exceptionPriorityProcesses;
             Inaccessible_Process_Count_Label.Content = inaccessibleProcesses;
@@ -198,11 +190,13 @@ namespace PACTWPF
         {
             if (pact.ToggleProcessOverwatch())
             {
-                Label_ToggleStatus.Content = "PACT is ACTIVE";
+                Label_ToggleStatus.Content = "ACTIVE";
+                Label_ToggleStatus.Foreground = System.Windows.Media.Brushes.Green;
             }
             else
             {
-                Label_ToggleStatus.Content = "PACT is PAUSED";
+                Label_ToggleStatus.Content = "PAUSED";
+                Label_ToggleStatus.Foreground = System.Windows.Media.Brushes.Red;
             }
         }
 
@@ -211,6 +205,88 @@ namespace PACTWPF
         ////                           Configure Tab                            ////
         ////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////
+        
+        private ProcessConfig OpenProcessConfigWindow(string target, ProcessConfig initial)
+        {
+            ProcessConfigEditWindow window = new ProcessConfigEditWindow(initial);
+            window.TargetProcessOrGroup = target;
+            ProcessConfig conf = null;
+
+            if (window.ShowDialog() == true)
+            {
+                conf = window.GenerateConfig();
+            }
+
+            window.Close();
+            return conf;
+        }
+
+        private ProcessConfig OpenProcessConfigWindow(ProcessConfig initial, out string name)
+        {
+            ProcessConfigEditWindow window = new ProcessConfigEditWindow(initial);
+            window.TargetProcessOrGroup = ListView_Custom.SelectedItem.ToString();
+            ProcessConfig conf = null;
+
+            if (window.ShowDialog() == true)
+            {
+                conf = window.GenerateConfig();
+            }
+
+            name = window.TargetProcessOrGroup;
+            window.Close();
+            return conf;
+        }
+
+        private void DragCheck(ListView source, MouseEventArgs mouseEvent)
+        {
+            System.Windows.Point mousePosition = mouseEvent.GetPosition(null);
+
+            bool movedX = Math.Abs(mousePosition.X) > SystemParameters.MinimumHorizontalDragDistance;
+            bool movedY = Math.Abs(mousePosition.Y) > SystemParameters.MinimumVerticalDragDistance;
+            bool hasMoved = movedX || movedY;
+
+            bool posX = mouseEvent.GetPosition(source).X < source.ActualWidth - SystemParameters.VerticalScrollBarWidth;
+            bool posY = mouseEvent.GetPosition(source).Y < source.ActualHeight - SystemParameters.HorizontalScrollBarHeight;
+            bool isOnTarget = posX && posY;
+
+            bool lmbIsDown = mouseEvent.LeftButton == MouseButtonState.Pressed;
+
+            if (lmbIsDown && hasMoved && isOnTarget)
+            {
+                List<string> items = new List<string>();
+                // God what a pain in the ass Drag and Drop is.
+                // This hack here was the simplest solution.
+                // If anyone has enough experience with WPF,
+                // I am open to suggestions.
+                items.Add(source.Name);
+                foreach (var item in source.SelectedItems)
+                {
+                    items.Add(item.ToString());
+                }
+
+                if (items.Count > 0)
+                {
+                    DragDrop.DoDragDrop(source, string.Join(Environment.NewLine, items), DragDropEffects.Copy | DragDropEffects.Move);
+                }
+            }
+        }
+
+        private void DropTrigger(ListView destination, DragEventArgs dragEvent, Action<List<string>> action)
+        {
+            if (dragEvent.Data.GetDataPresent(DataFormats.StringFormat))
+            {
+                string dataString = (string)dragEvent.Data.GetData(DataFormats.StringFormat);
+                var itemList = dataString.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).ToList();
+                var sourceName = itemList[0];
+                itemList.RemoveAt(0);
+                if (sourceName != destination.Name && itemList.Count > 0)
+                {
+                    action(itemList);
+                }
+            }
+
+            TriggerListUpdate();
+        }
 
         bool ProcessSearchFilter(object obj)
         {
@@ -242,10 +318,28 @@ namespace PACTWPF
             ListView_Custom_Initialized(this, null);
             ListView_Blacklist_Initialized(this, null);
 
-            ListView_Normal_Validate();
-            ListView_HighPerformance_Validate();
             ListView_Custom_Validate();
-            ListView_Blacklist_Validate();
+        }
+
+        private void TriggerSoftListUpdate(Object source, EventArgs e)
+        {
+            var currentlyRunningProcesses = pact.GetNormalPerformanceProcesses();
+            for (int i = ListView_Normal.Items.Count - 1; i >= 0; i--)
+            {
+                string listednpp = ListView_Normal.Items[i] as string;
+                if (!currentlyRunningProcesses.Contains(listednpp))
+                {
+                    ListView_Normal.Items.RemoveAt(i);
+                }
+            }
+
+            for (int i = 0; i < currentlyRunningProcesses.Count; i++)
+            {
+                if ((ListView_Normal.Items[i] as string) != currentlyRunningProcesses[i])
+                {
+                    ListView_Normal.Items.Insert(i, currentlyRunningProcesses[i]);
+                }
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////////
@@ -255,68 +349,30 @@ namespace PACTWPF
         private void ListView_Normal_Initialized(object sender, EventArgs e)
         {
             ListView_Normal.Items.Clear();
-            foreach (var hpp in pact.GetNormalPerformanceProcesses())
+            foreach (var npp in pact.GetNormalPerformanceProcesses())
             {
-                ListView_Normal.Items.Add(hpp);
+                ListView_Normal.Items.Add(npp);
             }
 
             ListView_Normal.Items.Filter = ProcessSearchFilter;
         }
 
-        private void ListView_Normal_SelectionChanged(object sender, EventArgs e)
+        private void ListView_Normal_MouseMove(object sender, MouseEventArgs e)
         {
-            Button_Normal_MoveToBlacklist.IsEnabled = true;
-            Button_Normal_MoveToHighPerformance.IsEnabled = true;
-            Button_Normal_MoveToCustom.IsEnabled = true;
+            DragCheck(ListView_Normal, e);
         }
 
-        private void Button_Normal_MoveToBlacklist_Click(object sender, RoutedEventArgs e)
+        private void ListView_Normal_Drop(object sender, DragEventArgs e)
         {
-            pact.AddToBlacklist(ListView_Normal.SelectedItem.ToString());
-            TriggerListUpdate();
+            DropTrigger(ListView_Normal, e, pact.ClearProcesses);
         }
 
         private void Button_Normal_Configure_Click(object sender, RoutedEventArgs e)
         {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = "[Normal Priority Processes]";
-            ProcessConfig conf;
-            if (window.ShowDialog() == true)
+            var conf = OpenProcessConfigWindow("[Normal Priority Processes]", pact.ActivePACTConfig.DefaultPerformanceProcessConfig);
+            if (conf != null)
             {
-                conf = window.GenerateConfig();
                 pact.UpdateDefaultPriorityProcessConfig(conf);
-            }
-
-            TriggerListUpdate();
-        }
-
-        private void Button_Normal_MoveToCustom_Click(object sender, RoutedEventArgs e)
-        {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = ListView_Normal.SelectedItem.ToString();
-            ProcessConfig conf;
-            if (window.ShowDialog() == true)
-            {
-                conf = window.GenerateConfig();
-                pact.AddToCustomPriority(window.TargetProcessOrGroup, conf);
-            }
-
-            TriggerListUpdate();
-        }
-
-        private void Button_Normal_MoveToHighPerformance_Click(object sender, RoutedEventArgs e)
-        {
-            pact.AddToHighPerformance(ListView_Normal.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void ListView_Normal_Validate()
-        {
-            if (ListView_Normal.SelectedItem == null)
-            {
-                Button_Normal_MoveToBlacklist.IsEnabled = false;
-                Button_Normal_MoveToHighPerformance.IsEnabled = false;
-                Button_Normal_MoveToCustom.IsEnabled = false;
             }
         }
 
@@ -335,38 +391,17 @@ namespace PACTWPF
             ListView_HighPerformance.Items.Filter = ProcessSearchFilter;
         }
 
-        private void ListView_HighPerformance_SelectionChanged(object sender, EventArgs e)
+        private void ListView_HighPerformance_MouseMove(object sender, MouseEventArgs e)
         {
-            Button_HighPerformance_Remove.IsEnabled = true;
-            Button_HighPerformance_MoveToCustom.IsEnabled = true;
+            DragCheck(ListView_HighPerformance, e);
         }
 
-        private void Button_HighPerformance_Configure_Click(object sender, RoutedEventArgs e)
+        private void ListView_HighPerformance_Drop(object sender, DragEventArgs e)
         {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = "[High Priority Processes]";
-            ProcessConfig conf;
-            if (window.ShowDialog() == true)
-            {
-                conf = window.GenerateConfig();
-                pact.UpdateHighPerformanceProcessConfig(conf);
-            }
+            DropTrigger(ListView_HighPerformance, e, pact.AddToHighPerformance);
         }
 
-        private void Button_HighPerformance_MoveToCustom_Click(object sender, RoutedEventArgs e)
-        {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
-            window.TargetProcessOrGroup = ListView_HighPerformance.SelectedItem.ToString();
-            ProcessConfig conf;
-            if (window.ShowDialog() == true)
-            {
-                conf = window.GenerateConfig();
-                pact.AddToCustomPriority(window.TargetProcessOrGroup, conf);
-            }
-            TriggerListUpdate();
-        }
-
-        private void Button_HighPerformance_AddManual_Click(object sender, RoutedEventArgs e)
+        private void Button_HighPerformance_Add_Click(object sender, RoutedEventArgs e)
         {
             ProcessNameEntryWindow window = new ProcessNameEntryWindow();
             if (window.ShowDialog() == true)
@@ -376,18 +411,12 @@ namespace PACTWPF
             TriggerListUpdate();
         }
 
-        private void Button_HighPerformance_Remove_Click(object sender, RoutedEventArgs e)
+        private void Button_HighPerformance_Configure_Click(object sender, RoutedEventArgs e)
         {
-            pact.ClearProcess(ListView_HighPerformance.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void ListView_HighPerformance_Validate()
-        {
-            if (ListView_HighPerformance.SelectedItem == null)
+            var conf = OpenProcessConfigWindow("[High Priority Processes]", pact.ActivePACTConfig.HighPerformanceProcessConfig);
+            if (conf != null)
             {
-                Button_HighPerformance_MoveToCustom.IsEnabled = false;
-                Button_HighPerformance_Remove.IsEnabled = false;
+                pact.UpdateHighPerformanceProcessConfig(conf);
             }
         }
 
@@ -398,9 +427,9 @@ namespace PACTWPF
         private void ListView_Custom_Initialized(object sender, EventArgs e)
         {
             ListView_Custom.Items.Clear();
-            foreach (var hpp in pact.GetCustomProcesses())
+            foreach (var cpp in pact.GetCustomProcesses())
             {
-                ListView_Custom.Items.Add(hpp);
+                ListView_Custom.Items.Add(cpp);
             }
 
             ListView_Custom.Items.Filter = ProcessSearchFilter;
@@ -409,15 +438,58 @@ namespace PACTWPF
         private void ListView_Custom_SelectionChanged(object sender, EventArgs e)
         {
             Button_Custom_Configure.IsEnabled = true;
-            Button_Custom_MoveToHighPerformance.IsEnabled = true;
-            Button_Custom_Remove.IsEnabled = true;
+        }
+
+        private void ListView_Custom_MouseMove(object sender, MouseEventArgs e)
+        {
+            DragCheck(ListView_Custom, e);
+        }
+
+        private void ListView_Custom_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.StringFormat))
+            {
+                string dataString = (string)e.Data.GetData(DataFormats.StringFormat);
+                var itemList = dataString.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).ToList();
+                var sourceName = itemList[0];
+                itemList.RemoveAt(0);
+                if (sourceName != ListView_Custom.Name && itemList.Count > 0)
+                {
+                    var conf = OpenProcessConfigWindow(string.Join(", ", itemList), new ProcessConfig());
+
+                    if (conf != null)
+                    {
+                        pact.AddToCustomPriority(itemList, conf);
+                    }
+                    TriggerListUpdate();
+                }
+            }
+        }
+
+        private void Button_Custom_Add_Click(object sender, RoutedEventArgs e)
+        {
+            string name;
+            var conf = OpenProcessConfigWindow(new ProcessConfig(), out name);
+            if (conf != null)
+            {
+                pact.AddToCustomPriority(name, conf);
+            }
+
+            TriggerListUpdate();
         }
 
         private void Button_Custom_Configure_Click(object sender, RoutedEventArgs e)
         {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow();
+            string target = ListView_Custom.SelectedItem.ToString();
+            ProcessConfig initial = new ProcessConfig();
+            if (pact.ActivePACTConfig.CustomPerformanceProcesses.ContainsKey(target))
+            {
+                initial = pact.ActivePACTConfig.CustomPerformanceProcesses[target];
+            }
+
+            ProcessConfigEditWindow window = new ProcessConfigEditWindow(initial);
             window.TargetProcessOrGroup = ListView_Custom.SelectedItem.ToString();
-            ProcessConfig conf;
+            ProcessConfig conf = new ProcessConfig();
             if (window.ShowDialog() == true)
             {
                 conf = window.GenerateConfig();
@@ -426,25 +498,11 @@ namespace PACTWPF
             TriggerListUpdate();
         }
 
-        private void Button_Custom_MoveToHighPerformance_Click(object sender, RoutedEventArgs e)
-        {
-            pact.AddToHighPerformance(ListView_Custom.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void Button_Custom_Remove_Click(object sender, RoutedEventArgs e)
-        {
-            pact.ClearProcess(ListView_Custom.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
         private void ListView_Custom_Validate()
         {
             if (ListView_Custom.SelectedItem == null)
             {
                 Button_Custom_Configure.IsEnabled = false;
-                Button_Custom_MoveToHighPerformance.IsEnabled = false;
-                Button_Custom_Remove.IsEnabled = false;
             }
         }
 
@@ -455,17 +513,22 @@ namespace PACTWPF
         private void ListView_Blacklist_Initialized(object sender, EventArgs e)
         {
             ListView_Blacklist.Items.Clear();
-            foreach (var hpp in pact.GetBlacklistedProcesses())
+            foreach (var blp in pact.GetBlacklistedProcesses())
             {
-                ListView_Blacklist.Items.Add(hpp);
+                ListView_Blacklist.Items.Add(blp);
             }
 
             ListView_Blacklist.Items.Filter = ProcessSearchFilter;
         }
 
-        private void ListView_Blacklist_SelectionChanged(object sender, EventArgs e)
+        private void ListView_Blacklist_MouseMove(object sender, MouseEventArgs e)
         {
-            Button_Blacklist_Remove.IsEnabled = true;
+            DragCheck(ListView_Blacklist, e);
+        }
+
+        private void ListView_Blacklist_Drop(object sender, DragEventArgs e)
+        {
+            DropTrigger(ListView_Blacklist, e, pact.AddToBlacklist);
         }
 
         private void Button_Blacklist_Add_Click(object sender, RoutedEventArgs e)
@@ -475,22 +538,10 @@ namespace PACTWPF
             {
                 pact.AddToBlacklist(window.ProcessName);
             }
+            window.Close();
             TriggerListUpdate();
         }
 
-        private void Button_Blacklist_Remove_Click(object sender, RoutedEventArgs e)
-        {
-            pact.ClearProcess(ListView_Blacklist.SelectedItem.ToString());
-            TriggerListUpdate();
-        }
-
-        private void ListView_Blacklist_Validate()
-        {
-            if (ListView_Blacklist.SelectedItem == null)
-            {
-                Button_Blacklist_Remove.IsEnabled = false;
-            }
-        }
 
         ////////////////////////////////////////////////////////////////////////////
         //                          Settings/Options Tab                          //
@@ -498,7 +549,7 @@ namespace PACTWPF
 
         private string OpenFile(string defaultExt, string filter)
         {
-            OpenFileDialog dialog = new OpenFileDialog();
+            System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog();
 
             dialog.DefaultExt = defaultExt;
             dialog.Filter = filter;
@@ -514,7 +565,7 @@ namespace PACTWPF
 
         private string SaveFile(string defaultExt, string filter)
         {
-            SaveFileDialog dialog = new SaveFileDialog();
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog();
 
             dialog.DefaultExt = defaultExt;
             dialog.Filter = filter;

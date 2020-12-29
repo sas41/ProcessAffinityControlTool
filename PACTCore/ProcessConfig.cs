@@ -1,42 +1,46 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace PACTCore
 {
 
     public class ProcessConfig
     {
-        [JsonProperty]
+        [JsonInclude]
         public ProcessPriorityClass Priority { get; set; }
 
-        [JsonProperty]
+        [JsonInclude]
         public long AffinityMask { get; set; }
 
 
+        [JsonInclude]
         // Affinity mask is calculated using this set of numbers.
-        [JsonProperty]
         public List<int> CoreList { get; private set; }
 
 
-        public ProcessConfig(List<int> coreNumbers = null, ProcessPriorityClass priority = ProcessPriorityClass.Normal)
+        public ProcessConfig()
         {
-            if (coreNumbers == null)
+            CoreList = Enumerable.Range(0, Environment.ProcessorCount).ToList();
+            ReCalculateMask();
+            Priority = ProcessPriorityClass.Normal;
+        }
+        public ProcessConfig(List<int> cores, ProcessPriorityClass priority)
+        {
+            int maxCount = Environment.ProcessorCount;
+            if (cores.Any(x => x < 0 || x > maxCount))
             {
-                CoreList = Enumerable.Range(0, Environment.ProcessorCount).ToList();
-            }
-            else
-            {
-                CoreList = coreNumbers;
-                ReCalculateMask();
+                throw new ArgumentOutOfRangeException($"Thread Numbers are between 0 and {maxCount} on this machine!");
             }
 
+            CoreList = cores;
+            ReCalculateMask();
             Priority = priority;
         }
-
 
 
         public long ReCalculateMask()

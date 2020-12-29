@@ -11,55 +11,52 @@
             <Grid x:Name="Grid_Status">
 
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*"/>
-                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="4*"/>
+                    <ColumnDefinition Width="6*"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
                     <RowDefinition />
-                    <RowDefinition />
-                    <RowDefinition />
-                    <RowDefinition />
-                    <RowDefinition />
-                    <RowDefinition />
-                    <RowDefinition />
                 </Grid.RowDefinitions>
-
-                <Label Grid.Row="0" Grid.Column="0" Content="Total CPU Usage:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                <Label x:Name="Total_CPU_Usage_Label" Content="100%" Grid.Row="0" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-
-                <Label Grid.Row="1" Grid.Column="0" Content="Total Process Count:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                <Label x:Name="Total_Process_Count_Label" Content="9999" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-
-                <Label Grid.Row="2" Grid.Column="0" Content="Active High Performance Process:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                <Label x:Name="Active_High_Performance_Process_Count_Label" Content="9999" Grid.Row="2" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-
-                <Label Grid.Row="3" Grid.Column="0" Content="Active Custom Performance Count:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                <Label x:Name="Active_Custom_Count_Label" Content="9999" Grid.Row="3" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-
-                <Label Grid.Row="4" Grid.Column="0" Content="Inaccessible Process Count:" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                <Label x:Name="Inaccessible_Process_Count_Label" Content="9999" Grid.Row="4" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-
-                <Button x:Name="Button_Toggle" Content="     Toggle PACT     " Grid.Row="5" Grid.Column="0" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Stretch" Click="Button_Toggle_Click" />
-                <Label x:Name="Label_ToggleStatus" Grid.Row="5" Content="PACT is ACTIVE" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,10,10,10" FontSize="22"/>
-
-                <Label x:Name="Creator_Label" Grid.Row="6" Grid.Column="0" Content="PACT by Berk (SAS41) Alyamach." HorizontalAlignment="Left" VerticalAlignment="Center"/>
-
-                <Grid x:Name="Grid_Status_Text" Grid.Row="0" Grid.Column="1" >
+                
+                <Grid x:Name="Grid_Status_Text" Grid.Row="0" Grid.Column="0">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
                         <ColumnDefinition />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition />
-                        <RowDefinition />
-                        <RowDefinition />
-                        <RowDefinition />
-                        <RowDefinition />
-                        <RowDefinition />
-                        <RowDefinition />
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="1*"/>
+                        <RowDefinition Height="5*"/>
+                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
+
+                    <Label Grid.Column="0" Content="Total CPU Usage" HorizontalAlignment="Left" VerticalAlignment="Center" Grid.ColumnSpan="2"/>
+                    <Label x:Name="Total_CPU_Usage_Label" Content="..." Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="1" Grid.Column="0" Content="Running Processes" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Total_Process_Count_Label" Content="..." Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="Running High Perf." HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Active_High_Performance_Process_Count_Label" Content="..." Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="3" Grid.Column="0" Content="Running Custom Perf." HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Active_Custom_Count_Label" Content="..." Grid.Row="3" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                    <Label Grid.Row="4" Grid.Column="0" Content="Inaccessible Processes" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Label x:Name="Inaccessible_Process_Count_Label" Content="..." Grid.Row="4" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                    <Button x:Name="Button_Toggle" Content="Toggle PACT" Grid.Row="5" Grid.Column="0" HorizontalAlignment="Stretch" Margin="10,10,10,10" Click="Button_Toggle_Click" />
+                    <Label x:Name="Label_ToggleStatus" Grid.Row="5" Content="ACTIVE" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" FontSize="22" Foreground="Green" FontWeight="Bold"/>
+
+                    <Label x:Name="Creator_Label" Grid.Row="7" Grid.Column="0" Content="PACT by Berk (SAS41) Alyamach." HorizontalAlignment="Left" VerticalAlignment="Center" Grid.ColumnSpan="2"/>
+
                 </Grid>
 
-                <Grid x:Name="Grid_Status_CPU" Grid.Row="0" Grid.Column="1" ShowGridLines="True" Grid.RowSpan="7" Initialized="Grid_Status_CPU_Initialized">
+                <Grid x:Name="Grid_Status_CPU" Grid.Row="0" Grid.Column="1" ShowGridLines="True" Initialized="Grid_Status_CPU_Initialized">
                     <Grid.ColumnDefinitions>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -69,7 +66,7 @@
             </Grid>
         </TabItem>
 
-        <TabItem x:Name="Tab_Configure" Header="Configure" FontSize="16">
+        <TabItem x:Name="Tab_Configure" Header="Configure" FontSize="16" Height="25" VerticalAlignment="Top">
 
             <Grid x:Name="Grid_Configure" >
                 <Grid.ColumnDefinitions>
@@ -79,7 +76,6 @@
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -101,31 +97,24 @@
                 </Grid>
 
 
-                <Label Content="Running, Normal Processes" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Button x:Name="Button_Normal_MoveToBlacklist" Content="Blacklist" Grid.Row="2" Grid.Column="0" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Normal_MoveToBlacklist_Click" IsEnabled="False" />
-                <Button x:Name="Button_Normal_Configure" Content="Configure..." Grid.Row="2" Grid.Column="0" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Normal_Configure_Click"/>
-                <Button x:Name="Button_Normal_MoveToHighPerformance" Content="Make HP" Grid.Row="3" Grid.Column="0" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Normal_MoveToHighPerformance_Click"/>
-                <Button x:Name="Button_Normal_MoveToCustom" Content="Make Cust..." Grid.Row="3" Grid.Column="0" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Normal_MoveToCustom_Click"/>
-                <ListView x:Name="ListView_Normal" Grid.Row="4" Grid.Column="0" Initialized="ListView_Normal_Initialized" SelectionChanged ="ListView_Normal_SelectionChanged"/>
+                <Label Content="Running Processes (Normal)" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Button x:Name="Button_Normal_Configure" Content="Configure..." Grid.Row="2" Grid.Column="0" HorizontalAlignment="Center" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Normal_Configure_Click"/>
+                <ListView x:Name="ListView_Normal" Grid.Row="3" Grid.Column="0" SelectionMode="Extended" Initialized="ListView_Normal_Initialized" MouseMove ="ListView_Normal_MouseMove" Drop="ListView_Normal_Drop" AllowDrop="True"/>
 
 
                 <Label Content="High Performance Processes" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Button x:Name="Button_HighPerformance_AddManual" Content="Manually Add..." Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_HighPerformance_AddManual_Click"/>
+                <Button x:Name="Button_HighPerformance_Add" Content="Manually Add..." Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_HighPerformance_Add_Click"/>
                 <Button x:Name="Button_HighPerformance_Configure" Content="Configure..." Grid.Row="2" Grid.Column="1" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_HighPerformance_Configure_Click"/>
-                <Button x:Name="Button_HighPerformance_Remove" Content="Remove" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_HighPerformance_Remove_Click"/>
-                <Button x:Name="Button_HighPerformance_MoveToCustom" Content="Make Cust..." Grid.Row="3" Grid.Column="1" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_HighPerformance_MoveToCustom_Click"/>
-                <ListView x:Name="ListView_HighPerformance" Grid.Row="4" Grid.Column="1" Initialized="ListView_HighPerformance_Initialized" SelectionChanged ="ListView_HighPerformance_SelectionChanged"/>
+                <ListView x:Name="ListView_HighPerformance" Grid.Row="3" Grid.Column="1" SelectionMode="Extended" Initialized="ListView_HighPerformance_Initialized" MouseMove ="ListView_HighPerformance_MouseMove" Drop="ListView_HighPerformance_Drop" AllowDrop="True"/>
 
                 <Label Content="Custom Performance" Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Button x:Name="Button_Custom_Configure" Content="Configure Selected..." Grid.Row="2" Grid.Column="2" HorizontalAlignment="Center" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Custom_Configure_Click" IsEnabled="False"/>
-                <Button x:Name="Button_Custom_MoveToHighPerformance" Content="Make HP" Grid.Row="3" Grid.Column="2" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Custom_MoveToHighPerformance_Click"/>
-                <Button x:Name="Button_Custom_Remove" Content="Remove" Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" IsEnabled="False" Click="Button_Custom_Remove_Click"/>
-                <ListView x:Name="ListView_Custom" Grid.Row="4" Grid.Column="2" Initialized="ListView_Custom_Initialized" SelectionChanged ="ListView_Custom_SelectionChanged"/>
+                <Button x:Name="Button_Custom_Add" Content="Manually Add..." Grid.Row="2" Grid.Column="2" HorizontalAlignment="Left" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Custom_Add_Click"/>
+                <Button x:Name="Button_Custom_Configure" Content="Configure..." Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Custom_Configure_Click" IsEnabled="False"/>
+                <ListView x:Name="ListView_Custom" Grid.Row="3" Grid.Column="2" SelectionMode="Extended" Initialized="ListView_Custom_Initialized" SelectionChanged ="ListView_Custom_SelectionChanged" MouseMove ="ListView_Custom_MouseMove" Drop="ListView_Custom_Drop" AllowDrop="True"/>
 
                 <Label Content="Blacklist" Grid.Row="1" Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Button x:Name="Button_Blacklist_Add" Content="Manually Add to Blacklist..." Grid.Row="2" Grid.Column="3" HorizontalAlignment="Center" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Blacklist_Add_Click"/>
-                <Button x:Name="Button_Blacklist_Remove" Content="Remove from Blacklist" Grid.Row="3" Grid.Column="3" HorizontalAlignment="Center" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Blacklist_Remove_Click" IsEnabled="False"/>
-                <ListView x:Name="ListView_Blacklist" Grid.Row="4"  Grid.Column="3" Initialized="ListView_Blacklist_Initialized" SelectionChanged ="ListView_Blacklist_SelectionChanged"/>
+                <Button x:Name="Button_Blacklist_Add" Content="Manually Add..." Grid.Row="2" Grid.Column="3" HorizontalAlignment="Center" Margin="10,10,10,10" VerticalAlignment="Top" Click="Button_Blacklist_Add_Click"/>
+                <ListView x:Name="ListView_Blacklist" Grid.Row="3"  Grid.Column="3" SelectionMode="Extended" Initialized="ListView_Blacklist_Initialized" MouseMove ="ListView_Blacklist_MouseMove" Drop="ListView_Blacklist_Drop" AllowDrop="True"/>
             </Grid>
         </TabItem>
 
@@ -153,7 +142,7 @@
                 <Button x:Name="Button_Options_Blacklist_Import" Content="Import Blacklist" Grid.Row="1" Grid.Column="0" Margin="10,10,10,10" Click="Button_Options_Blacklist_Import_Click"  />
                 <Button x:Name="Button_Options_Blacklist_Export" Content="Export Blacklist" Grid.Row="1" Grid.Column="1" Margin="10,10,10,10" Click="Button_Options_Blacklist_Export_Click"  />
                 <Button x:Name="Button_Options_Blacklist_Clear" Content="Clear Blacklist" Grid.Row="1" Grid.Column="3" Margin="10,10,10,10" Click="Button_Options_Blacklist_Clear_Click" />
-                
+
                 <Button x:Name="Button_Options_Config_Import" Content="Import Config" Grid.Row="2" Grid.Column="0" Margin="10,10,10,10" Click="Button_Options_Config_Import_Click" />
                 <Button x:Name="Button_Options_Config_Export" Content="Export Config" Grid.Row="2" Grid.Column="1" Margin="10,10,10,10" Click="Button_Options_Config_Export_Click" />
                 <Button x:Name="Button_Options_Custom_Clear" Content="Clear Custom List" Grid.Row="2" Grid.Column="3" Margin="10,10,10,10" Click="Button_Options_Custom_Clear_Click" />

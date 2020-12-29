@@ -24,10 +24,17 @@ namespace PACTWPF
 
         private List<CheckBox> CheckBoxes;
 
-        public ProcessConfigEditWindow()
+        public ProcessConfigEditWindow(ProcessConfig initial)
         {
             CheckBoxes = new List<CheckBox>();
             InitializeComponent();
+
+            foreach (var item in initial.CoreList)
+            {
+                CheckBoxes[item].IsChecked = true;
+            }
+
+            ComboBox_PrioritySelect.SelectedItem = initial.Priority;
         }
 
         private void Grid_ProcessConfigEditWindow_CPUSelect_Initialized(object sender, EventArgs e)
@@ -160,6 +167,7 @@ namespace PACTWPF
 
         private void TextBox_TargetProcessOrGroup_TextChanged(object sender, EventArgs e)
         {
+            TargetProcessOrGroup = TextBox_TargetProcessOrGroup.Text;
             ValidateForm();
         }
 
