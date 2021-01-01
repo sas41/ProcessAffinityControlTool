@@ -27,8 +27,19 @@ namespace PACTWPF
 
         private PerformanceCounter TotalCPUUsage;
 
+        private List<string> RunningProcesses;
+        private List<string> HighPerformanceProcesses;
+        private List<string> CustomProcesses;
+        private List<string> BlacklistedProcesses;
+
+
         public MainWindow()
         {
+            RunningProcesses = new List<string>();
+            HighPerformanceProcesses = new List<string>();
+            CustomProcesses = new List<string>();
+            BlacklistedProcesses = new List<string>();
+
             pact = new PACTInstance();
             pact.ToggleProcessOverwatch();
 
@@ -148,7 +159,7 @@ namespace PACTWPF
             UIUpdateTimer = new System.Windows.Threading.DispatcherTimer(DispatcherPriority.Render);
             UIUpdateTimer.Interval = new TimeSpan(0, 0, 0, 0, 1000);
             UIUpdateTimer.Tick += new EventHandler(UpdatePerformanceStatistics);
-            UIUpdateTimer.Tick += new EventHandler(TriggerSoftListUpdate);
+            UIUpdateTimer.Tick += new EventHandler(TriggerListUpdate);
 
             UIUpdateTimer.Start();
         }
@@ -285,7 +296,7 @@ namespace PACTWPF
                 }
             }
 
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         bool ProcessSearchFilter(object obj)
@@ -302,16 +313,19 @@ namespace PACTWPF
 
         private void Configure_Search_TextChanged(object sender, TextChangedEventArgs e)
         {
-            TriggerListUpdate();
-
+            // Setting the filter triggers also applies it immediately.
+            ListView_Normal.Items.Filter = ProcessSearchFilter;
+            ListView_HighPerformance.Items.Filter = ProcessSearchFilter;
+            ListView_Custom.Items.Filter = ProcessSearchFilter;
+            ListView_Blacklist.Items.Filter = ProcessSearchFilter;
         }
 
         private void Button_Refresh_Click(object sender, RoutedEventArgs e)
         {
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
-        private void TriggerListUpdate()
+        private void TriggerListUpdate(Object source, EventArgs e)
         {
             ListView_Normal_Initialized(this, null);
             ListView_HighPerformance_Initialized(this, null);
@@ -321,39 +335,14 @@ namespace PACTWPF
             ListView_Custom_Validate();
         }
 
-        private void TriggerSoftListUpdate(Object source, EventArgs e)
-        {
-            var currentlyRunningProcesses = pact.GetNormalPerformanceProcesses();
-            for (int i = ListView_Normal.Items.Count - 1; i >= 0; i--)
-            {
-                string listednpp = ListView_Normal.Items[i] as string;
-                if (!currentlyRunningProcesses.Contains(listednpp))
-                {
-                    ListView_Normal.Items.RemoveAt(i);
-                }
-            }
-
-            for (int i = 0; i < currentlyRunningProcesses.Count; i++)
-            {
-                if ((ListView_Normal.Items[i] as string) != currentlyRunningProcesses[i])
-                {
-                    ListView_Normal.Items.Insert(i, currentlyRunningProcesses[i]);
-                }
-            }
-        }
-
         ////////////////////////////////////////////////////////////////////////////
         //                     Normal Performance Column                          //
         ////////////////////////////////////////////////////////////////////////////
 
         private void ListView_Normal_Initialized(object sender, EventArgs e)
         {
-            ListView_Normal.Items.Clear();
-            foreach (var npp in pact.GetNormalPerformanceProcesses())
-            {
-                ListView_Normal.Items.Add(npp);
-            }
-
+            RunningProcesses = pact.GetNormalPerformanceProcesses().ToList();
+            ListView_Normal.ItemsSource = RunningProcesses;
             ListView_Normal.Items.Filter = ProcessSearchFilter;
         }
 
@@ -382,12 +371,8 @@ namespace PACTWPF
         
         private void ListView_HighPerformance_Initialized(object sender, EventArgs e)
         {
-            ListView_HighPerformance.Items.Clear();
-            foreach (var hpp in pact.GetHighPerformanceProcesses())
-            {
-                ListView_HighPerformance.Items.Add(hpp);
-            }
-
+            HighPerformanceProcesses = pact.GetHighPerformanceProcesses().ToList();
+            ListView_HighPerformance.ItemsSource = HighPerformanceProcesses;
             ListView_HighPerformance.Items.Filter = ProcessSearchFilter;
         }
 
@@ -408,7 +393,7 @@ namespace PACTWPF
             {
                 pact.AddToHighPerformance(window.ProcessName);
             }
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_HighPerformance_Configure_Click(object sender, RoutedEventArgs e)
@@ -426,12 +411,8 @@ namespace PACTWPF
 
         private void ListView_Custom_Initialized(object sender, EventArgs e)
         {
-            ListView_Custom.Items.Clear();
-            foreach (var cpp in pact.GetCustomProcesses())
-            {
-                ListView_Custom.Items.Add(cpp);
-            }
-
+            CustomProcesses = pact.GetCustomProcesses().ToList();
+            ListView_Custom.ItemsSource = CustomProcesses;
             ListView_Custom.Items.Filter = ProcessSearchFilter;
         }
 
@@ -461,7 +442,7 @@ namespace PACTWPF
                     {
                         pact.AddToCustomPriority(itemList, conf);
                     }
-                    TriggerListUpdate();
+                    TriggerListUpdate(null, EventArgs.Empty);
                 }
             }
         }
@@ -475,7 +456,7 @@ namespace PACTWPF
                 pact.AddToCustomPriority(name, conf);
             }
 
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Custom_Configure_Click(object sender, RoutedEventArgs e)
@@ -495,7 +476,7 @@ namespace PACTWPF
                 conf = window.GenerateConfig();
                 pact.AddToCustomPriority(ListView_Custom.SelectedItem.ToString(), conf);
             }
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void ListView_Custom_Validate()
@@ -512,12 +493,8 @@ namespace PACTWPF
 
         private void ListView_Blacklist_Initialized(object sender, EventArgs e)
         {
-            ListView_Blacklist.Items.Clear();
-            foreach (var blp in pact.GetBlacklistedProcesses())
-            {
-                ListView_Blacklist.Items.Add(blp);
-            }
-
+            BlacklistedProcesses = pact.GetBlacklistedProcesses().ToList();
+            ListView_Blacklist.ItemsSource = BlacklistedProcesses;
             ListView_Blacklist.Items.Filter = ProcessSearchFilter;
         }
 
@@ -539,7 +516,7 @@ namespace PACTWPF
                 pact.AddToBlacklist(window.ProcessName);
             }
             window.Close();
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
 
@@ -586,7 +563,7 @@ namespace PACTWPF
             {
                 pact.ImportHighPerformance(path);
             }
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_HighPriority_Export_Click(object sender, RoutedEventArgs e)
@@ -601,7 +578,7 @@ namespace PACTWPF
         private void Button_Options_HighPriority_Clear_Click(object sender, RoutedEventArgs e)
         {
             pact.ClearHighPerformance();
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_Blacklist_Import_Click(object sender, RoutedEventArgs e)
@@ -611,7 +588,7 @@ namespace PACTWPF
             {
                 pact.ImportBlacklist(path);
             }
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_Blacklist_Export_Click(object sender, RoutedEventArgs e)
@@ -626,7 +603,7 @@ namespace PACTWPF
         private void Button_Options_Blacklist_Clear_Click(object sender, RoutedEventArgs e)
         {
             pact.ClearBlackList();
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_Config_Import_Click(object sender, RoutedEventArgs e)
@@ -636,7 +613,7 @@ namespace PACTWPF
             {
                 pact.ImportConfig(path);
             }
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
             // I don't understand why (yet), but for some reason
             // the performance bars do not update if Reset
             // or Import config buttons are pressed.
@@ -657,7 +634,7 @@ namespace PACTWPF
         private void Button_Options_Custom_Clear_Click(object sender, RoutedEventArgs e)
         {
             pact.ClearCustoms();
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_AutoMode_Toggle_Click(object sender, RoutedEventArgs e)
@@ -673,7 +650,7 @@ namespace PACTWPF
         private void Button_Options_ResetConfig_Click(object sender, RoutedEventArgs e)
         {
             pact.ResetConfig();
-            TriggerListUpdate();
+            TriggerListUpdate(null, EventArgs.Empty);
             // I don't understand why (yet), but for some reason
             // the performance bars do not update if Reset
             // or Import config buttons are pressed.
