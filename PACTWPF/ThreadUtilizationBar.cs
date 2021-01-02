@@ -32,6 +32,7 @@ namespace PACTWPF
             CustomLabel.HorizontalContentAlignment = HorizontalAlignment.Center;
             CustomLabel.VerticalContentAlignment = VerticalAlignment.Center;
             CustomLabel.FontSize = CustomLabel.FontSize * 2;
+            CustomLabel.Foreground = Brushes.Black;
         }
 
         public void UpdateUtilization()

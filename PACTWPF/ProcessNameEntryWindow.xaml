@@ -5,7 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PACTWPF"
         mc:Ignorable="d"
-        Title="ProcessNameEntryWindow" Height="297" Width="800" WindowStyle="SingleBorderWindow" Topmost="True" WindowStartupLocation="CenterOwner" FontSize="32">
+        Title="ProcessNameEntryWindow"
+        Height="500"
+        Width="1024"
+        MinHeight="500"
+        MinWidth="1024"
+        WindowStyle="ToolWindow"
+        Topmost="True"
+        WindowStartupLocation="CenterOwner">
 
 
         <Grid >
@@ -21,7 +28,7 @@
 
             <Label Grid.Column="0" Content="Process Name:" Margin="10,0,10,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
 
-            <TextBox x:Name="TextBox_ProcessName" Grid.Row="1" Grid.Column="0" Margin="10,0,10,0" HorizontalAlignment="Stretch" VerticalAlignment="Center" RenderTransformOrigin="0.727,0.534" FontWeight="Bold" TextChanged="TextBox_ProcessName_TextChanged" />
+            <TextBox x:Name="TextBox_ProcessName" Grid.Row="1" Grid.Column="0" Margin="10,0,10,0" HorizontalAlignment="Stretch" VerticalAlignment="Center" FontWeight="Bold" TextChanged="TextBox_ProcessName_TextChanged" />
 
             <Button x:Name="Button_Accept" Content="Accept" Margin="10,0,10,10" Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Left" FontWeight="Bold" Click="Button_Accept_Click" IsEnabled="False"/>
             <Button x:Name="Button_Cancel" Content="Cancel" Margin="10,0,10,10" Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Right" FontWeight="Bold" Click="Button_Cancel_Click"/>

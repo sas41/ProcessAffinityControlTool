@@ -54,7 +54,52 @@ namespace PACTWPF
             UpdatePerformanceBarColors(this, EventArgs.Empty);
         }
 
+        private void Label_Title_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == MouseButton.Left)
+                if (e.ClickCount == 2)
+                {
+                    AdjustWindowSize();
+                }
+                else
+                {
+                    Application.Current.MainWindow.DragMove();
+                }
+        }
 
+        private void Button_MinimizeToTray_Click(object sender, RoutedEventArgs e)
+        {
+            this.WindowState = WindowState.Minimized;
+            this.Hide();
+            TrayIcon.ShowBalloonTip(5000);
+        }
+
+        private void Button_Minimize_Click(object sender, RoutedEventArgs e)
+        {
+            this.WindowState = WindowState.Minimized;
+        }
+
+        private void Button_Maximize_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustWindowSize();
+        }
+
+        private void Button_Close_Click(object sender, RoutedEventArgs e)
+        {
+            Application.Current.Shutdown();
+        }
+
+        private void AdjustWindowSize()
+        {
+            if (this.WindowState == WindowState.Maximized)
+            {
+                this.WindowState = WindowState.Normal;
+            }
+            else
+            {
+                this.WindowState = WindowState.Maximized;
+            }
+        }
 
         public void InitTrayIcon()
         {
@@ -81,13 +126,10 @@ namespace PACTWPF
             if (this.WindowState == WindowState.Minimized)
             {
                 UIUpdateTimer.Stop();
-                TrayIcon.ShowBalloonTip(5000);
-                this.Hide();
             }
             else
             {
                 UIUpdateTimer.Start();
-                this.Show();
             }
         }
 
@@ -687,5 +729,6 @@ namespace PACTWPF
                 }
             }
         }
+
     }
 }

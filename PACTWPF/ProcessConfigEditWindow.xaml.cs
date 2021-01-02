@@ -63,7 +63,7 @@ namespace PACTWPF
             {
                 Grid_ProcessConfigEditWindow_CPUSelect.ColumnDefinitions.Add(new ColumnDefinition());
             }
-
+            RowDefinition rd;
             for (int i = 0; i < rows; i++)
             {
                 Grid_ProcessConfigEditWindow_CPUSelect.RowDefinitions.Add(new RowDefinition());
@@ -79,21 +79,40 @@ namespace PACTWPF
                         break;
                     }
 
+                    Grid grid = new Grid();
+                    grid.RowDefinitions.Add(new RowDefinition());
+                    grid.RowDefinitions.Add(new RowDefinition());
+                    grid.RowDefinitions.Add(new RowDefinition());
+
                     CheckBox cb = new CheckBox();
-                    cb.Content = $"T: {assigned}";
+                    //cb.Content = $"Thread {assigned}";
                     cb.Checked += CPUSelectCheckBoxChanged;
                     cb.HorizontalAlignment = HorizontalAlignment.Center;
                     cb.VerticalAlignment = VerticalAlignment.Center;
                     cb.HorizontalContentAlignment = HorizontalAlignment.Center;
                     cb.VerticalContentAlignment = VerticalAlignment.Center;
-                    cb.FontSize = cb.FontSize * 2;
-
                     CheckBoxes.Add(cb);
                     assigned++;
 
-                    Grid.SetRow(cb, i);
-                    Grid.SetColumn(cb, j);
-                    Grid_ProcessConfigEditWindow_CPUSelect.Children.Add(cb);
+                    Label lb = new Label();
+                    lb.HorizontalAlignment = HorizontalAlignment.Center;
+                    lb.VerticalAlignment = VerticalAlignment.Center;
+                    lb.HorizontalContentAlignment = HorizontalAlignment.Center;
+                    lb.VerticalContentAlignment = VerticalAlignment.Center;
+                    lb.Content = $"Thread {assigned}";
+                    lb.FontSize = lb.FontSize * 2;
+
+                    Grid.SetRow(lb, 0);
+                    Grid.SetRow(cb, 1);
+                    grid.Children.Add(lb);
+                    grid.Children.Add(cb);
+
+                    grid.MouseLeftButtonUp += (o, e) => { cb.IsChecked = !cb.IsChecked; };
+                    grid.MouseLeftButtonUp += CPUSelectCheckBoxChanged;
+
+                    Grid.SetRow(grid, i);
+                    Grid.SetColumn(grid, j);
+                    Grid_ProcessConfigEditWindow_CPUSelect.Children.Add(grid);
                 }
             }
         }
