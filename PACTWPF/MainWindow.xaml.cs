@@ -175,7 +175,7 @@ namespace PACTWPF
             {
                 for (int j = 0; j < columns; j++)
                 {
-                    if (assigned > threadCount)
+                    if (assigned >= threadCount)
                     {
                         break;
                     }

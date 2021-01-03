@@ -74,7 +74,7 @@ namespace PACTWPF
             {
                 for (int j = 0; j < columns; j++)
                 {
-                    if (assigned > threadCount)
+                    if (assigned >= threadCount)
                     {
                         break;
                     }
@@ -92,7 +92,6 @@ namespace PACTWPF
                     cb.HorizontalContentAlignment = HorizontalAlignment.Center;
                     cb.VerticalContentAlignment = VerticalAlignment.Center;
                     CheckBoxes.Add(cb);
-                    assigned++;
 
                     Label lb = new Label();
                     lb.HorizontalAlignment = HorizontalAlignment.Center;
@@ -109,6 +108,8 @@ namespace PACTWPF
 
                     grid.MouseLeftButtonUp += (o, e) => { cb.IsChecked = !cb.IsChecked; };
                     grid.MouseLeftButtonUp += CPUSelectCheckBoxChanged;
+
+                    assigned++;
 
                     Grid.SetRow(grid, i);
                     Grid.SetColumn(grid, j);
