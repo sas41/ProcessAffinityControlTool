@@ -12,15 +12,15 @@ namespace PACTCore
     {
         // Set of EXE names with their corresponding process configs.
         [JsonInclude]
-        public Dictionary<string, ProcessConfig> CustomPerformanceProcesses { get; set; }
+        public CaseInsensitiveDictionary<ProcessConfig> CustomPerformanceProcesses { get; set; }
 
         // Set of high performance executable names.
         [JsonInclude]
-        public HashSet<string> HighPerformanceProcesses { get; set; }
+        public CaseInsensitiveHashSet HighPerformanceProcesses { get; set; }
 
         // Set of blacklisted executable names.
         [JsonInclude]
-        public HashSet<string> Blacklist { get; set; }
+        public CaseInsensitiveHashSet Blacklist { get; set; }
 
         // Applies to all high-performance processes.
         [JsonInclude]
@@ -43,9 +43,9 @@ namespace PACTCore
 
         public PACTConfig()
         {
-            CustomPerformanceProcesses = new Dictionary<string, ProcessConfig>(NormalizedStringComparer.Instance);
-            HighPerformanceProcesses = new HashSet<string>(NormalizedStringComparer.Instance);
-            Blacklist = new HashSet<string>(NormalizedStringComparer.Instance);
+            CustomPerformanceProcesses = new CaseInsensitiveDictionary<ProcessConfig>();
+            HighPerformanceProcesses = new CaseInsensitiveHashSet();
+            Blacklist = new CaseInsensitiveHashSet();
             HighPerformanceProcessConfig = new ProcessConfig();
             DefaultPerformanceProcessConfig = new ProcessConfig();
 

@@ -4,6 +4,27 @@ using System.Text;
 
 namespace PACTCore
 {
+    // This file contains a neat hack for a bug regarding collections
+    // not having the correct comparer after deserialization.
+    // Perhaps a JSON attribute to restore the correct comparer would be nice?
+    // Either way, this hack feels cursed, but neat, but cursed.
+
+    public class CaseInsensitiveDictionary<V> : Dictionary<string, V>
+    {
+        public CaseInsensitiveDictionary() : base(NormalizedStringComparer.Instance as IEqualityComparer<string>)
+        {
+
+        }
+    }
+
+    public class CaseInsensitiveHashSet : HashSet<string>
+    {
+        public CaseInsensitiveHashSet() : base(NormalizedStringComparer.Instance as IEqualityComparer<string>)
+        {
+
+        }
+    }
+
     class NormalizedStringComparer : StringComparer
     {
         public static NormalizedStringComparer Instance { get; } = new NormalizedStringComparer();

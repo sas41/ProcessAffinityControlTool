@@ -63,7 +63,7 @@ namespace PACTWPF
             {
                 Grid_ProcessConfigEditWindow_CPUSelect.ColumnDefinitions.Add(new ColumnDefinition());
             }
-            RowDefinition rd;
+
             for (int i = 0; i < rows; i++)
             {
                 Grid_ProcessConfigEditWindow_CPUSelect.RowDefinitions.Add(new RowDefinition());

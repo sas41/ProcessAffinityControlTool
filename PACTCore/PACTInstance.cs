@@ -42,7 +42,6 @@ namespace PACTCore
             }
         }
 
-
         public bool ToggleProcessOverwatch()
         {
             IsActive = !(IsActive);
@@ -249,22 +248,17 @@ namespace PACTCore
 
         public IReadOnlyList<string> GetHighPerformanceProcesses()
         {
-            return PACTProcessOverwatch.Config.HighPerformanceProcesses.OrderBy(x => x).ToList();
+            return ActivePACTConfig.HighPerformanceProcesses.OrderBy(x => x).ToList();
         }
 
         public IReadOnlyList<string> GetCustomProcesses()
         {
-            return PACTProcessOverwatch.Config.CustomPerformanceProcesses.Keys.OrderBy(x => x).ToList();
+            return ActivePACTConfig.CustomPerformanceProcesses.Keys.OrderBy(x => x).ToList();
         }
 
         public IReadOnlyList<string> GetBlacklistedProcesses()
         {
-            return PACTProcessOverwatch.Config.Blacklist.OrderBy(x => x).ToList();
-        }
-
-        public IReadOnlyList<int> GetCustomPerformanceConfig()
-        {
-            return PACTProcessOverwatch.Config.HighPerformanceProcessConfig.CoreList;
+            return ActivePACTConfig.Blacklist.OrderBy(x => x).ToList();
         }
 
 

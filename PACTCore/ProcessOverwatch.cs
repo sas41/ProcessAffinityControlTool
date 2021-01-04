@@ -21,13 +21,13 @@ namespace PACTCore
         }
 
         public int AggressiveScanCountdown { get; set; }
-        public List<int> ManagedProcesses { get; private set; }
+        public List<string> ManagedProcesses { get; private set; }
         public List<Process> ProtectedProcesses { get; private set; }
 
         public ProcessOverwatch()
         {
             Config = new PACTConfig();
-            ManagedProcesses = new List<int>();
+            ManagedProcesses = new List<string>();
             ProtectedProcesses = new List<Process>();
             AggressiveScanCountdown = 0;
             Config.RecalculateAffinities();
@@ -77,16 +77,16 @@ namespace PACTCore
             ProtectedProcesses.Clear();
             foreach (var process in Process.GetProcesses())
             {
-                int hash = process.GetHashCode();
+                string processName = process.ProcessName;
                 try
                 {
-                    if (!ManagedProcesses.Contains(hash))
+                    if (!ManagedProcesses.Contains(processName))
                     {
                         SetProcessAffinityAndPriority(process);
-                        ManagedProcesses.Add(hash);
+                        ManagedProcesses.Add(processName);
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     ProtectedProcesses.Add(process);
                 }
@@ -102,13 +102,13 @@ namespace PACTCore
 
             foreach (var process in Process.GetProcesses())
             {
-                int hash = process.GetHashCode();
+                string processName = process.ProcessName;
                 try
                 {
                     SetProcessAffinityAndPriority(process);
-                    ManagedProcesses.Add(hash);
+                    ManagedProcesses.Add(processName);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     ProtectedProcesses.Add(process);
                 }
@@ -117,9 +117,6 @@ namespace PACTCore
 
         private void SetProcessAffinityAndPriority(Process process)
         {
-            // Todo: Write a case-insensitive comparator extension for dictionaries.
-            // This is inhuman...
-
             IntPtr mask;
             ProcessPriorityClass priority;
 
