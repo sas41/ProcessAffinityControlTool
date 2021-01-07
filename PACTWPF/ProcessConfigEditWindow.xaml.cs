@@ -182,6 +182,7 @@ namespace PACTWPF
             else
             {
                 TextBox_TargetProcessOrGroup.Text = "";
+                Button_Accept.IsEnabled = false;
             }
         }
 

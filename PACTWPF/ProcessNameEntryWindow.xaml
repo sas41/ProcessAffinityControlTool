@@ -6,33 +6,33 @@
         xmlns:local="clr-namespace:PACTWPF"
         mc:Ignorable="d"
         Title="ProcessNameEntryWindow"
-        Height="500"
-        Width="1024"
-        MinHeight="500"
-        MinWidth="1024"
+        Height="180"
+        Width="300"
+        MinHeight="180"
+        MinWidth="300"
         WindowStyle="ToolWindow"
         Topmost="True"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        BorderBrush="{StaticResource Theme.Accent}"
+        BorderThickness="2">
 
 
-        <Grid >
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
+    <Grid >
+        <Grid.RowDefinitions>
             <RowDefinition  Height="Auto" />
             <RowDefinition  Height="Auto" />
             <RowDefinition  />
-                <RowDefinition  Height="Auto" />
-            </Grid.RowDefinitions>
+            <RowDefinition  Height="Auto" />
+        </Grid.RowDefinitions>
+        
 
-            <Label Grid.Column="0" Content="Process Name:" Margin="10,0,10,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+        <Label Grid.Column="0" Content="Process Name:" Margin="10,0,10,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
 
-            <TextBox x:Name="TextBox_ProcessName" Grid.Row="1" Grid.Column="0" Margin="10,0,10,0" HorizontalAlignment="Stretch" VerticalAlignment="Center" FontWeight="Bold" TextChanged="TextBox_ProcessName_TextChanged" />
+        <TextBox x:Name="TextBox_ProcessName" Grid.Row="1" Grid.Column="0" Margin="10,0,10,0" HorizontalAlignment="Stretch" VerticalAlignment="Center" FontWeight="Bold" TextChanged="TextBox_ProcessName_TextChanged" />
 
-            <Button x:Name="Button_Accept" Content="Accept" Margin="10,0,10,10" Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Left" FontWeight="Bold" Click="Button_Accept_Click" IsEnabled="False"/>
-            <Button x:Name="Button_Cancel" Content="Cancel" Margin="10,0,10,10" Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Right" FontWeight="Bold" Click="Button_Cancel_Click"/>
-
-        </Grid>
+        <Button x:Name="Button_Accept" Content="Accept" Margin="10,0,10,10" Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Left" FontWeight="Bold" Click="Button_Accept_Click" IsEnabled="False"/>
+        <Button x:Name="Button_Cancel" Content="Cancel" Margin="10,0,10,10" Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Right" FontWeight="Bold" Click="Button_Cancel_Click"/>
+        
+    </Grid>
 
 </Window>

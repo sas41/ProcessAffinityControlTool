@@ -476,7 +476,7 @@
                             IsEnabled="False" />
 
                     <Button x:Name="Button_Options_About"
-                            Content="About PACT... (Github)"
+                            Content="About PACT..."
                             Grid.Row="5"
                             Grid.Column="0"
                             Margin="10,10,10,10"

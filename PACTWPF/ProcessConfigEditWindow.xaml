@@ -13,7 +13,9 @@
         WindowStyle="ToolWindow"
         Topmost="True"
         WindowStartupLocation="CenterOwner"
-        FontSize="16">
+        FontSize="16"
+        BorderBrush="{StaticResource Theme.Accent}"
+        BorderThickness="2">
 
     <Grid x:Name="Grid_ProcessConfigEditWindow">
         <Grid.ColumnDefinitions>

@@ -274,10 +274,10 @@ namespace PACTWPF
             return conf;
         }
 
-        private ProcessConfig OpenProcessConfigWindow(ProcessConfig initial, out string name)
+        private ProcessConfig OpenProcessConfigWindow(out string name)
         {
-            ProcessConfigEditWindow window = new ProcessConfigEditWindow(initial);
-            window.TargetProcessOrGroup = ListView_Custom.SelectedItem.ToString();
+            ProcessConfigEditWindow window = new ProcessConfigEditWindow(new ProcessConfig());
+            window.TargetProcessOrGroup = "";
             ProcessConfig conf = null;
 
             if (window.ShowDialog() == true)
@@ -307,15 +307,15 @@ namespace PACTWPF
             if (lmbIsDown && hasMoved && isOnTarget)
             {
                 List<string> items = new List<string>();
+                foreach (var item in source.SelectedItems)
+                {
+                    items.Add(item.ToString());
+                }
                 // God what a pain in the ass Drag and Drop is.
                 // This hack here was the simplest solution.
                 // If anyone has enough experience with WPF,
                 // I am open to suggestions.
                 items.Add(source.Name);
-                foreach (var item in source.SelectedItems)
-                {
-                    items.Add(item.ToString());
-                }
 
                 if (items.Count > 0)
                 {
@@ -330,8 +330,8 @@ namespace PACTWPF
             {
                 string dataString = (string)dragEvent.Data.GetData(DataFormats.StringFormat);
                 var itemList = dataString.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).ToList();
-                var sourceName = itemList[0];
-                itemList.RemoveAt(0);
+                var sourceName = itemList.Last();
+                itemList.RemoveAt(itemList.Count - 1);
                 if (sourceName != destination.Name && itemList.Count > 0)
                 {
                     action(itemList);
@@ -474,8 +474,8 @@ namespace PACTWPF
             {
                 string dataString = (string)e.Data.GetData(DataFormats.StringFormat);
                 var itemList = dataString.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).ToList();
-                var sourceName = itemList[0];
-                itemList.RemoveAt(0);
+                var sourceName = itemList.Last();
+                itemList.RemoveAt(itemList.Count - 1);
                 if (sourceName != ListView_Custom.Name && itemList.Count > 0)
                 {
                     var conf = OpenProcessConfigWindow(string.Join(", ", itemList), new ProcessConfig());
@@ -492,7 +492,7 @@ namespace PACTWPF
         private void Button_Custom_Add_Click(object sender, RoutedEventArgs e)
         {
             string name;
-            var conf = OpenProcessConfigWindow(new ProcessConfig(), out name);
+            var conf = OpenProcessConfigWindow(out name);
             if (conf != null)
             {
                 pact.AddToCustomPriority(name, conf);
