@@ -472,8 +472,16 @@
                             Grid.Row="3"
                             Grid.Column="0"
                             Margin="10,10,10,10"
-                            Click="Button_Options_AutoMode_Toggle_Click"
-                            IsEnabled="False" />
+                            Click="Button_Options_AutoMode_Toggle_Click"/>
+                    <Label x:Name="Label_AutoMode"
+                               Grid.Row="3"
+                               Grid.Column="1"
+                               Content="AUTO MODE ON"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Center"
+                               FontSize="22"
+                               Foreground="Green"
+                               FontWeight="Bold"/>
 
                     <Button x:Name="Button_Options_About"
                             Content="About PACT..."

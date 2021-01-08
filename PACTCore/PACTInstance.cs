@@ -356,5 +356,10 @@ namespace PACTCore
             OnConfigUpdated();
             SaveConfig();
         }
+
+        public bool ToggleAutoMode()
+        {
+            return PACTProcessOverwatch.ToggleAutoMode();
+        }
     }
 }

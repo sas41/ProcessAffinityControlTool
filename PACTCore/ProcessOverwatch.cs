@@ -24,6 +24,8 @@ namespace PACTCore
         public List<string> ManagedProcesses { get; private set; }
         public List<Process> ProtectedProcesses { get; private set; }
 
+        public bool AutoMode { get; private set; }
+
         public ProcessOverwatch()
         {
             Config = new PACTConfig();
@@ -31,12 +33,26 @@ namespace PACTCore
             ProtectedProcesses = new List<Process>();
             AggressiveScanCountdown = 0;
             Config.RecalculateAffinities();
+            AutoMode = true;
         }
 
 
 
         public void SetTimer()
         {
+            // It pains me to note, that timer class
+            // is not accurate at all and it strives for
+            // an average of X rather than actually triggering
+            // events every X miliseconds.
+
+            // This leads to situations where nothing happens
+            // for a solid 10 seconds and than three scans
+            // back to back withing a couple of seconds.
+
+            // Not ideal and should be replaced.
+
+            // TODO: Create a more accurate timer.
+
             // Create a timer with a X second interval.
             ScanTimer = new System.Timers.Timer(Config.ScanInterval);
 
@@ -51,8 +67,18 @@ namespace PACTCore
             ScanTimer.Enabled = false;
         }
 
+        public bool ToggleAutoMode()
+        {
+            AutoMode = !AutoMode;
+            return AutoMode;
+        }
+
         private void TriggerScan(Object source, ElapsedEventArgs e)
         {
+            if (AutoMode)
+            {
+                AutoModeScan();
+            }
             RunScan();
         }
 
@@ -147,6 +173,41 @@ namespace PACTCore
             // Set Process Affinity
             process.ProcessorAffinity = mask;
             process.PriorityClass = priority;
+        }
+
+        private void AutoModeScan()
+        {
+            foreach (var process in Process.GetProcesses())
+            {
+                bool isBlacklisted = Config.Blacklist.Contains(process.ProcessName);
+                bool isHighPriority = Config.HighPerformanceProcesses.Contains(process.ProcessName);
+                bool isCustomPriority = Config.CustomPerformanceProcesses.ContainsKey(process.ProcessName);
+                if (isBlacklisted || isHighPriority || isCustomPriority)
+                {
+                    continue;
+                }
+
+                // Very wasteful, might have to resort to Win32 API based solution
+                using (var performanceCounter = new PerformanceCounter("Process", "Creating Process ID", process.ProcessName))
+                {
+                    string parent;
+
+                    try
+                    {
+                        int pid = (int)performanceCounter.RawValue;
+                        parent = Process.GetProcessById(pid).ProcessName;
+                    }
+                    catch (Exception)
+                    {
+                        parent = "";
+                    }
+
+                    if (parent != "" && Config.AutoModeLaunchers.Contains(parent))
+                    {
+                         Config.AddToHighPerformance(process.ProcessName);
+                    }
+                }
+            }
         }
     }
 }

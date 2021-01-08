@@ -682,6 +682,16 @@ namespace PACTWPF
         private void Button_Options_AutoMode_Toggle_Click(object sender, RoutedEventArgs e)
         {
             // TODO: Make auto-mode happen.
+            if (pact.ToggleAutoMode())
+            {
+                Label_AutoMode.Content = "AUTO MODE ON";
+                Label_AutoMode.Foreground = System.Windows.Media.Brushes.Green;
+            }
+            else
+            {
+                Label_AutoMode.Content = "AUTO MODE OFF";
+                Label_AutoMode.Foreground = System.Windows.Media.Brushes.Red;
+            }
         }
 
         private void Button_Options_About_Click(object sender, RoutedEventArgs e)
