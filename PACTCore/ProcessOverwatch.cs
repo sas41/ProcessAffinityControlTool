@@ -5,209 +5,269 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Timers;
+using System.Threading.Tasks;
+using System.ComponentModel;
 
 namespace PACTCore
 {
     public class ProcessOverwatch
     {
-        private static System.Timers.Timer ScanTimer;
+
+        private BackgroundWorker ScanBackgroundWorker { get; set; }
 
 
-        private PACTConfig config;
-        public PACTConfig Config
+        private System.Timers.Timer ScanTimer;
+
+        private PACTConfig userConfig;
+        public PACTConfig UserConfig
         {
-            get { return config; }
-            set { config = value; Config.RecalculateAffinities(); }
+            get { return userConfig; }
+            set { userConfig = value; UserConfig.RecalculateAffinities(); }
         }
 
-        public int AggressiveScanCountdown { get; set; }
-        public List<string> ManagedProcesses { get; private set; }
+        public PACTConfig PausedConfig { get; set; }
+
+        public PACTConfig ActiveConfig { get; set; }
+
+        public List<Process> ManagedProcesses { get; private set; }
         public List<Process> ProtectedProcesses { get; private set; }
 
         public bool AutoMode { get; private set; }
 
-        public ProcessOverwatch()
+        public CaseInsensitiveHashSet AutoModeDetections { get; private set; }
+
+        public Dictionary<Process, Process> ChildParentPairs { get; private set; }
+
+        public bool FreshScanRequested { get; set; }
+        public bool ToggleRequested { get; set; }
+
+
+
+        public ProcessOverwatch(PACTConfig userConfig)
         {
-            Config = new PACTConfig();
-            ManagedProcesses = new List<string>();
+            PausedConfig = new PACTConfig();
+            UserConfig = userConfig;
+            ActiveConfig = UserConfig;
+
+            ManagedProcesses = new List<Process>();
             ProtectedProcesses = new List<Process>();
-            AggressiveScanCountdown = 0;
-            Config.RecalculateAffinities();
+
             AutoMode = true;
-        }
+            AutoModeDetections = new CaseInsensitiveHashSet();
+            ChildParentPairs = new Dictionary<Process, Process>();
+
+            FreshScanRequested = false;
+            ToggleRequested = false;
 
 
 
-        public void SetTimer()
-        {
-            // It pains me to note, that timer class
-            // is not accurate at all and it strives for
-            // an average of X rather than actually triggering
-            // events every X miliseconds.
+            ScanBackgroundWorker = new BackgroundWorker();
+            ScanBackgroundWorker.WorkerReportsProgress = false;
+            ScanBackgroundWorker.WorkerSupportsCancellation = false;
+            ScanBackgroundWorker.DoWork += TriggerScan;
 
-            // This leads to situations where nothing happens
-            // for a solid 10 seconds and than three scans
-            // back to back withing a couple of seconds.
-
-            // Not ideal and should be replaced.
-
-            // TODO: Create a more accurate timer.
-
-            // Create a timer with a X second interval.
-            ScanTimer = new System.Timers.Timer(Config.ScanInterval);
-
-            // Hook up the Elapsed event for the timer. 
-            ScanTimer.Elapsed += TriggerScan;
+            ScanTimer = new System.Timers.Timer(UserConfig.ScanInterval);
+            ScanTimer.Elapsed += ScanBackGroundWorkerTrigger;
             ScanTimer.AutoReset = true;
             ScanTimer.Enabled = true;
         }
 
-        public void PauseTimer()
+
+
+        public bool ToggleProcessOverwatch()
         {
-            ScanTimer.Enabled = false;
+            if (ScanTimer.Enabled)
+            {
+                ActiveConfig = PausedConfig;
+                RequestFreshScan();
+                ToggleRequested = true;
+            }
+            else
+            {
+                ToggleRequested = false;
+                RequestFreshScan();
+                ScanTimer.Enabled = true;
+                ActiveConfig = UserConfig;
+            }
+
+            return ActiveConfig == UserConfig;
         }
 
         public bool ToggleAutoMode()
         {
-            AutoMode = !AutoMode;
-            return AutoMode;
-        }
-
-        private void TriggerScan(Object source, ElapsedEventArgs e)
-        {
             if (AutoMode)
             {
-                AutoModeScan();
-            }
-            RunScan();
-        }
-
-        public void RunScan(bool forced = false)
-        {
-            if (Config.ForceAggressiveScan || AggressiveScanCountdown == 0 || forced)
-            {
-                RunAggressiveScan();
-                AggressiveScanCountdown = Config.AggressiveScanInterval;
+                AutoMode = false;
             }
             else
             {
-                RunNormalScan();
-                AggressiveScanCountdown--;
+                AutoMode = true;
             }
-
+            return AutoMode;
         }
 
-        // Normal scans only fiddle with processes that are new compared to the last normal scan.
-        private void RunNormalScan()
+        public void RequestFreshScan()
         {
-            ProtectedProcesses.Clear();
-            foreach (var process in Process.GetProcesses())
+            FreshScanRequested = true;
+        }
+
+
+
+        private void ScanBackGroundWorkerTrigger(Object source, EventArgs e)
+        {
+            if (!ScanBackgroundWorker.IsBusy)
             {
-                string processName = process.ProcessName;
-                try
+                ScanBackgroundWorker.RunWorkerAsync();
+            }
+        }
+
+        private void TriggerScan(Object source, EventArgs e)
+        {
+            if (ScanTimer.Enabled)
+            {
+                if (AutoMode)
                 {
-                    if (!ManagedProcesses.Contains(processName))
+                    UpdateChildParentPairs();
+                }
+
+                ScanAndManage(ActiveConfig, FreshScanRequested);
+
+                if (ToggleRequested)
+                {
+                    ScanTimer.Enabled = false;
+                }
+
+                FreshScanRequested = false;
+                ToggleRequested = false;
+            }
+        }
+
+        private void UpdateChildParentPairs()
+        {
+            Dictionary<Process, Process> currenChildParentPairs = new Dictionary<Process, Process>();
+            CaseInsensitiveHashSet currenAutoModeDetections = new CaseInsensitiveHashSet();
+
+            foreach (var currentProcess in Process.GetProcesses())
+            {
+                if (currentProcess.ProcessName.ToLower() == "idle" || currentProcess.ProcessName.ToLower() == "system")
+                {
+                    continue;
+                }
+
+                if (ChildParentPairs.ContainsKey(currentProcess))
+                {
+                    currenChildParentPairs.Add(currentProcess, ChildParentPairs[currentProcess]);
+                }
+                else
+                {
+                    using (var performanceCounter = new PerformanceCounter("Process", "Creating Process ID", currentProcess.ProcessName))
                     {
-                        SetProcessAffinityAndPriority(process);
-                        ManagedProcesses.Add(processName);
+                        try
+                        {
+                            int pid = (int)performanceCounter.RawValue;
+                            Process parent = Process.GetProcessById(pid);
+                            currenChildParentPairs.Add(currentProcess, parent);
+                        }
+                        catch (ArgumentException)
+                        {
+                            // No parent
+                            currenChildParentPairs.Add(currentProcess, null);
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Process has exited.
+                            continue;
+                        }
                     }
                 }
-                catch (Exception)
+
+                if (currenChildParentPairs[currentProcess] != null)
                 {
-                    ProtectedProcesses.Add(process);
+                    try
+                    {
+                        var parent = currenChildParentPairs[currentProcess];
+                        if (UserConfig.AutoModeLaunchers.Contains(parent.ProcessName))
+                        {
+                            currenAutoModeDetections.Add(currentProcess.ProcessName);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Parent has exited.
+                    }
                 }
             }
+
+            ChildParentPairs = currenChildParentPairs;
+            AutoModeDetections = currenAutoModeDetections;
         }
 
-        // Aggressive Scans apply to both new processes and re-apply to already scanned processes.
-        private void RunAggressiveScan()
+        private void ScanAndManage(PACTConfig config, bool forced = false)
         {
-            Config.RecalculateAffinities();
+            if (forced)
+            {
+                ManagedProcesses.Clear();
+            }
+
             ProtectedProcesses.Clear();
-            ManagedProcesses.Clear();
+            List<Process> currentSet = new List<Process>();
 
             foreach (var process in Process.GetProcesses())
             {
-                string processName = process.ProcessName;
-                try
+                if (!ManagedProcesses.Contains(process))
                 {
-                    SetProcessAffinityAndPriority(process);
-                    ManagedProcesses.Add(processName);
-                }
-                catch (Exception)
-                {
-                    ProtectedProcesses.Add(process);
+                    try
+                    {
+                        SetProcessAffinityAndPriority(process, config);
+                        currentSet.Add(process);
+                    }
+                    catch (Exception)
+                    {
+                        ProtectedProcesses.Add(process);
+                    }
                 }
             }
+
+            ManagedProcesses = currentSet;
         }
 
-        private void SetProcessAffinityAndPriority(Process process)
+        private void SetProcessAffinityAndPriority(Process process, PACTConfig config)
         {
             IntPtr mask;
             ProcessPriorityClass priority;
 
             string processName = process.ProcessName;
 
-            if (Config.Blacklist.Contains(processName))
+            if (config.Blacklist.Contains(processName))
             {
                 return;
             }
 
-            if (Config.CustomPerformanceProcesses.ContainsKey(processName))
+            if (config.CustomPerformanceProcesses.ContainsKey(processName))
             {
-                ProcessConfig conf = Config.HighPerformanceProcessConfig;
+                ProcessConfig conf = config.CustomPerformanceProcesses[processName];
                 mask = (IntPtr)conf.AffinityMask;
                 priority = conf.Priority;
             }
-            else if (Config.HighPerformanceProcesses.Contains(processName))
+            else if (config.HighPerformanceProcesses.Contains(processName))
             {
-                mask = (IntPtr)Config.HighPerformanceProcessConfig.AffinityMask;
-                priority = Config.HighPerformanceProcessConfig.Priority;
+                mask = (IntPtr)config.HighPerformanceProcessConfig.AffinityMask;
+                priority = config.HighPerformanceProcessConfig.Priority;
+            }
+            else if (AutoMode && AutoModeDetections.Contains(processName))
+            {
+                mask = (IntPtr)config.HighPerformanceProcessConfig.AffinityMask;
+                priority = config.HighPerformanceProcessConfig.Priority;
             }
             else
             {
-                mask = (IntPtr)Config.DefaultPerformanceProcessConfig.AffinityMask;
-                priority = Config.DefaultPerformanceProcessConfig.Priority;
+                mask = (IntPtr)config.DefaultPerformanceProcessConfig.AffinityMask;
+                priority = config.DefaultPerformanceProcessConfig.Priority;
             }
 
-            // Set Process Affinity
             process.ProcessorAffinity = mask;
             process.PriorityClass = priority;
         }
 
-        private void AutoModeScan()
-        {
-            foreach (var process in Process.GetProcesses())
-            {
-                bool isBlacklisted = Config.Blacklist.Contains(process.ProcessName);
-                bool isHighPriority = Config.HighPerformanceProcesses.Contains(process.ProcessName);
-                bool isCustomPriority = Config.CustomPerformanceProcesses.ContainsKey(process.ProcessName);
-                if (isBlacklisted || isHighPriority || isCustomPriority)
-                {
-                    continue;
-                }
-
-                // Very wasteful, might have to resort to Win32 API based solution
-                using (var performanceCounter = new PerformanceCounter("Process", "Creating Process ID", process.ProcessName))
-                {
-                    string parent;
-
-                    try
-                    {
-                        int pid = (int)performanceCounter.RawValue;
-                        parent = Process.GetProcessById(pid).ProcessName;
-                    }
-                    catch (Exception)
-                    {
-                        parent = "";
-                    }
-
-                    if (parent != "" && Config.AutoModeLaunchers.Contains(parent))
-                    {
-                         Config.AddToHighPerformance(process.ProcessName);
-                    }
-                }
-            }
-        }
     }
 }

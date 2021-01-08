@@ -390,6 +390,79 @@
                 </Grid>
             </TabItem>
 
+            <TabItem x:Name="Tab_AutoMode"
+                     Header="AutoMode">
+
+                <Grid x:Name="Grid_AutoMode">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="1*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="1*" />
+                        <RowDefinition Height="1*" />
+                        <RowDefinition Height="1*" />
+                        <RowDefinition Height="6*" />
+                    </Grid.RowDefinitions>
+                    
+                    <Button x:Name="Button_AutoMode_Toggle"
+                            Content="Toggle AutoMode"
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            Margin="10,10,10,10"
+                            Click="Button_AutoMode_Toggle_Click"/>
+                    <Label x:Name="Label_AutoMode"
+                               Grid.Row="0"
+                               Grid.Column="1"
+                               Content="AUTO MODE ON"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Center"
+                               FontSize="22"
+                               Foreground="Green"
+                               FontWeight="Bold"/>
+                    
+                    <Label Content="Registered Launchers"
+                           Grid.Row="1" Grid.Column="0"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+                    <Button x:Name="Button_AutoMode_Add"
+                            Content="Add..."
+                            Grid.Row="2" Grid.Column="0"
+                            HorizontalAlignment="Left"
+                            Margin="10,10,10,10"
+                            VerticalAlignment="Top"
+                            Click="Button_AutoMode_Add_Click"/>
+                    <Button x:Name="Button_AutoMode_Remove"
+                            Content="Remove"
+                            Grid.Row="2" Grid.Column="0"
+                            HorizontalAlignment="Right"
+                            Margin="10,10,10,10"
+                            VerticalAlignment="Top"
+                            Click="Button_AutoMode_Remove_Click"/>
+                    <ListView x:Name="ListView_AutoModeLaunchers"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              Grid.Row="3"
+                              Grid.Column="0"
+                              SelectionMode="Single"
+                              Initialized="ListView_AutoModeLaunchers_Initialized"
+                              SelectionChanged="ListView_AutoModeLaunchers_SelectionChanged"/>
+                    
+                    <Label Content="Detected Processes"
+                           Grid.Row="1" Grid.Column="1"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+                    <ListView x:Name="ListView_AutoModeDetections"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              Grid.Row="3"
+                              Grid.Column="1"
+                              SelectionMode="Single"
+                              Initialized="ListView_AutoModeDetections_Initialized"/>
+
+                </Grid>
+            </TabItem>
+            
             <TabItem x:Name="Tab_Settings"
                      Header="Help and Settings">
 
@@ -465,23 +538,6 @@
                             Grid.Column="3"
                             Margin="10,10,10,10"
                             Click="Button_Options_Custom_Clear_Click"/>
-
-
-                    <Button x:Name="Button_Options_AutoMode_Toggle"
-                            Content="Toggle AutoMode"
-                            Grid.Row="3"
-                            Grid.Column="0"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_AutoMode_Toggle_Click"/>
-                    <Label x:Name="Label_AutoMode"
-                               Grid.Row="3"
-                               Grid.Column="1"
-                               Content="AUTO MODE ON"
-                               HorizontalAlignment="Left"
-                               VerticalAlignment="Center"
-                               FontSize="22"
-                               Foreground="Green"
-                               FontWeight="Bold"/>
 
                     <Button x:Name="Button_Options_About"
                             Content="About PACT..."

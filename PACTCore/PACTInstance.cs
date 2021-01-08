@@ -13,25 +13,16 @@ namespace PACTCore
     // I wanted to just create a single line solution so I can focus on the UI part of the code.
     public class PACTInstance
     {
-
         public delegate void ConfigUpdatedEventHandler(object sender, EventArgs e);
-        //public event ConfigUpdated OnConfigUpdated;
         public event ConfigUpdatedEventHandler ConfigUpdated;
 
         public ProcessOverwatch PACTProcessOverwatch { get; private set; }
-        // The active config is public so that it can be changed.
-        public PACTConfig ActivePACTConfig { get; private set; }
-        public PACTConfig PausedPACTConfig { get; private set; }
-        public bool IsActive { get; private set; }
-
-
 
         public PACTInstance()
         {
-            PACTProcessOverwatch = new ProcessOverwatch();
-            ReadConfig();
-            PausedPACTConfig = new PACTConfig();
-            IsActive = false;
+            PACTProcessOverwatch = new ProcessOverwatch(ReadConfig());
+            PACTProcessOverwatch.RequestFreshScan();
+            SaveConfig();
         }
 
         protected virtual void OnConfigUpdated(string updateReason = "")
@@ -44,54 +35,33 @@ namespace PACTCore
 
         public bool ToggleProcessOverwatch()
         {
-            IsActive = !(IsActive);
-            if (IsActive)
-            {
-                // If we just switched from false to true...
-                PACTProcessOverwatch.Config = ActivePACTConfig;
-                PACTProcessOverwatch.RunScan(true);
-                PACTProcessOverwatch.SetTimer();
-            }
-            else
-            {
-                // If we just switched from true to false...
-                PACTProcessOverwatch.PauseTimer();
-                PACTProcessOverwatch.Config = PausedPACTConfig;
-                PACTProcessOverwatch.RunScan(true);
-            }
+            bool state = PACTProcessOverwatch.ToggleProcessOverwatch();
             OnConfigUpdated();
-            return IsActive;
+            return state;
         }
 
-        private void ReadConfig()
+        private PACTConfig ReadConfig()
         {
             string path = AppDomain.CurrentDomain.BaseDirectory;
             string configPath = path + "/Config/config.json";
+            PACTConfig tconf = new PACTConfig();
 
             if (File.Exists(configPath))
             {
                 string json = File.ReadAllText(configPath);
-                PACTConfig tconf = JsonSerializer.Deserialize<PACTConfig>(json);
-                ActivePACTConfig = tconf;
-                PACTProcessOverwatch.RunScan(true);
-            }
-            else
-            {
-                ActivePACTConfig = new PACTConfig();
-                SaveConfig();
+                tconf = JsonSerializer.Deserialize<PACTConfig>(json);
             }
 
-            OnConfigUpdated();
+            return tconf;
         }
 
-        private void SaveConfig()
+        public void SaveConfig()
         {
-            string json = JsonSerializer.Serialize<PACTConfig>(ActivePACTConfig, new JsonSerializerOptions { WriteIndented = true });
+            string json = JsonSerializer.Serialize<PACTConfig>(PACTProcessOverwatch.UserConfig, new JsonSerializerOptions { WriteIndented = true });
             string path = AppDomain.CurrentDomain.BaseDirectory + "/Config/";
             (new FileInfo(path)).Directory.Create();
             string configPath = path + "config.json";
             File.WriteAllText(configPath, json);
-            PACTProcessOverwatch.RunScan(true);
         }
 
         private void BackupConfig(string reason)
@@ -107,8 +77,8 @@ namespace PACTCore
             {
                 string json = File.ReadAllText(fullpath);
                 PACTConfig tconf = JsonSerializer.Deserialize<PACTConfig>(json);
-                ActivePACTConfig = tconf;
-                PACTProcessOverwatch.RunScan(true);
+                PACTProcessOverwatch.UserConfig = tconf;
+                PACTProcessOverwatch.RequestFreshScan();
             }
             else
             {
@@ -121,14 +91,14 @@ namespace PACTCore
 
         public void ExportConfig(string fullpath)
         {
-            string json = JsonSerializer.Serialize<PACTConfig>(ActivePACTConfig, new JsonSerializerOptions { WriteIndented = true });
+            string json = JsonSerializer.Serialize<PACTConfig>(PACTProcessOverwatch.UserConfig, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(fullpath, json);
         }
 
         public void ImportHighPerformance(string fullpath)
         {
             BackupConfig("BeforeHighPerformanceImport");
-            ImportFile(fullpath, ActivePACTConfig.AddToHighPerformance);
+            ImportFile(fullpath, PACTProcessOverwatch.UserConfig.AddToHighPerformance);
             OnConfigUpdated();
             SaveConfig();
         }
@@ -136,7 +106,7 @@ namespace PACTCore
         public void ImportBlacklist(string fullpath)
         {
             BackupConfig("BeforeBlackListImport");
-            ImportFile(fullpath, ActivePACTConfig.AddToBlacklist);
+            ImportFile(fullpath, PACTProcessOverwatch.UserConfig.AddToBlacklist);
             OnConfigUpdated();
             SaveConfig();
         }
@@ -150,7 +120,6 @@ namespace PACTCore
                 {
                     func(line);
                 }
-                PACTProcessOverwatch.RunScan(true);
             }
             else
             {
@@ -160,19 +129,19 @@ namespace PACTCore
 
         public void ExportHighPerformance(string fullpath)
         {
-            File.WriteAllLines(fullpath, ActivePACTConfig.HighPerformanceProcesses);
+            File.WriteAllLines(fullpath, PACTProcessOverwatch.UserConfig.HighPerformanceProcesses);
         }
 
         public void ExportBlacklist(string fullpath)
         {
-            File.WriteAllLines(fullpath, ActivePACTConfig.Blacklist);
+            File.WriteAllLines(fullpath, PACTProcessOverwatch.UserConfig.Blacklist);
         }
 
         public void ClearHighPerformance()
         {
             BackupConfig("BeforeClearHighPerformance");
 
-            ActivePACTConfig.HighPerformanceProcesses.Clear();
+            PACTProcessOverwatch.UserConfig.HighPerformanceProcesses.Clear();
 
             OnConfigUpdated();
             SaveConfig();
@@ -182,7 +151,7 @@ namespace PACTCore
         {
             BackupConfig("BeforeClearCustoms");
 
-            ActivePACTConfig.CustomPerformanceProcesses.Clear();
+            PACTProcessOverwatch.UserConfig.CustomPerformanceProcesses.Clear();
 
             OnConfigUpdated();
             SaveConfig();
@@ -192,7 +161,7 @@ namespace PACTCore
         {
             BackupConfig("BeforeClearBlacklist");
 
-            ActivePACTConfig.Blacklist.Clear();
+            PACTProcessOverwatch.UserConfig.Blacklist.Clear();
 
             OnConfigUpdated();
             SaveConfig();
@@ -202,13 +171,23 @@ namespace PACTCore
         {
             BackupConfig("BeforeResetConfig");
 
-            ActivePACTConfig = new PACTConfig();
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.UserConfig = new PACTConfig();
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
         }
 
+
+        public ProcessConfig GetDefaultPerformanceConfig()
+        {
+            return PACTProcessOverwatch.UserConfig.DefaultPerformanceProcessConfig;
+        }
+
+        public ProcessConfig GetHighPerformanceConfig()
+        {
+            return PACTProcessOverwatch.UserConfig.HighPerformanceProcessConfig;
+        }
 
 
         public IReadOnlyList<string> GetAllRunningProcesses()
@@ -248,24 +227,51 @@ namespace PACTCore
 
         public IReadOnlyList<string> GetHighPerformanceProcesses()
         {
-            return ActivePACTConfig.HighPerformanceProcesses.OrderBy(x => x).ToList();
+            return PACTProcessOverwatch.UserConfig.HighPerformanceProcesses.OrderBy(x => x).ToList();
         }
 
         public IReadOnlyList<string> GetCustomProcesses()
         {
-            return ActivePACTConfig.CustomPerformanceProcesses.Keys.OrderBy(x => x).ToList();
+            return PACTProcessOverwatch.UserConfig.CustomPerformanceProcesses.Keys.OrderBy(x => x).ToList();
         }
 
         public IReadOnlyList<string> GetBlacklistedProcesses()
         {
-            return ActivePACTConfig.Blacklist.OrderBy(x => x).ToList();
+            return PACTProcessOverwatch.UserConfig.Blacklist.OrderBy(x => x).ToList();
         }
 
+        public IReadOnlyList<string> GetAutoModeLaunchers()
+        {
+            return PACTProcessOverwatch.UserConfig.AutoModeLaunchers.OrderBy(x => x).ToList();
+        }
+
+        public IReadOnlyList<string> GetAutoModeDetections()
+        {
+            return PACTProcessOverwatch.AutoModeDetections.OrderBy(x => x).ToList();
+        }
+
+        public void RemoveFromAutoModeLaunchers(string name)
+        {
+            PACTProcessOverwatch.UserConfig.RemoveFromAutoModeLaunchers(name);
+            PACTProcessOverwatch.RequestFreshScan();
+
+            OnConfigUpdated();
+            SaveConfig();
+        }
+
+        public void AddToAutoModeLaunchers(string name)
+        {
+            PACTProcessOverwatch.UserConfig.AddToAutoModeLaunchers(name);
+            PACTProcessOverwatch.RequestFreshScan();
+
+            OnConfigUpdated();
+            SaveConfig();
+        }
 
         public void AddToBlacklist(string name)
         {
-            ActivePACTConfig.AddToBlacklist(name);
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.UserConfig.AddToBlacklist(name);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -275,9 +281,9 @@ namespace PACTCore
         {
             foreach (var name in names)
             {
-                ActivePACTConfig.AddToBlacklist(name);
+                PACTProcessOverwatch.UserConfig.AddToBlacklist(name);
             }
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -285,8 +291,8 @@ namespace PACTCore
 
         public void AddToHighPerformance(string name)
         {
-            ActivePACTConfig.AddToHighPerformance(name);
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.UserConfig.AddToHighPerformance(name);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -296,9 +302,9 @@ namespace PACTCore
         {
             foreach (var name in names)
             {
-                ActivePACTConfig.AddToHighPerformance(name);
+                PACTProcessOverwatch.UserConfig.AddToHighPerformance(name);
             }
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -306,8 +312,8 @@ namespace PACTCore
 
         public void AddToCustomPriority(string name, ProcessConfig conf)
         {
-            ActivePACTConfig.AddOToCustomPerformance(name, conf);
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.UserConfig.AddOToCustomPerformance(name, conf);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -317,9 +323,9 @@ namespace PACTCore
         {
             foreach (var name in names)
             {
-                ActivePACTConfig.AddOToCustomPerformance(name, conf);
+                PACTProcessOverwatch.UserConfig.AddOToCustomPerformance(name, conf);
             }
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -329,9 +335,9 @@ namespace PACTCore
         {
             foreach (var name in names)
             {
-                ActivePACTConfig.ClearProcessConfig(name);
+                PACTProcessOverwatch.UserConfig.ClearProcessConfig(name);
             }
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
@@ -340,18 +346,18 @@ namespace PACTCore
         public void UpdateHighPerformanceProcessConfig(ProcessConfig conf)
         {
             BackupConfig("BeforeUpdateHighPerformanceConfig");
-            ActivePACTConfig.HighPerformanceProcessConfig = conf;
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.UserConfig.HighPerformanceProcessConfig = conf;
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();
         }
 
-        public void UpdateDefaultPriorityProcessConfig(ProcessConfig conf)
+        public void UpdateDefaultPerformanceProcessConfig(ProcessConfig conf)
         {
             BackupConfig("BeforeUpdateNormalPerformanceConfig");
-            ActivePACTConfig.DefaultPerformanceProcessConfig = conf;
-            PACTProcessOverwatch.RunScan(true);
+            PACTProcessOverwatch.UserConfig.DefaultPerformanceProcessConfig = conf;
+            PACTProcessOverwatch.RequestFreshScan();
 
             OnConfigUpdated();
             SaveConfig();

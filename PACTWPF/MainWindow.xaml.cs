@@ -27,21 +27,10 @@ namespace PACTWPF
 
         private PerformanceCounter TotalCPUUsage;
 
-        private List<string> RunningProcesses;
-        private List<string> HighPerformanceProcesses;
-        private List<string> CustomProcesses;
-        private List<string> BlacklistedProcesses;
-
-
         public MainWindow()
         {
-            RunningProcesses = new List<string>();
-            HighPerformanceProcesses = new List<string>();
-            CustomProcesses = new List<string>();
-            BlacklistedProcesses = new List<string>();
-
             pact = new PACTInstance();
-            pact.ToggleProcessOverwatch();
+            //pact.ToggleProcessOverwatch();
 
             ThreadBars = new List<ThreadUtilizationBar>();
             TotalCPUUsage = new PerformanceCounter("Processor", "% Processor Time", "_Total");
@@ -86,6 +75,7 @@ namespace PACTWPF
 
         private void Button_Close_Click(object sender, RoutedEventArgs e)
         {
+            pact.SaveConfig();
             Application.Current.Shutdown();
         }
 
@@ -137,6 +127,12 @@ namespace PACTWPF
         {
             TrayIcon.Dispose();
         }
+
+        ////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////
+        ////                            Status Tab                              ////
+        ////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////
 
         private void Grid_Status_CPU_Initialized(object sender, EventArgs e)
         {
@@ -199,17 +195,18 @@ namespace PACTWPF
         public void InitializeUIUpdateTimer()
         {
             UIUpdateTimer = new System.Windows.Threading.DispatcherTimer(DispatcherPriority.Render);
-            UIUpdateTimer.Interval = new TimeSpan(0, 0, 0, 0, 1000);
+            UIUpdateTimer.Interval = new TimeSpan(0, 0, 0, 0, 2000);
             UIUpdateTimer.Tick += new EventHandler(UpdatePerformanceStatistics);
-            UIUpdateTimer.Tick += new EventHandler(TriggerListUpdate);
+            UIUpdateTimer.Tick += new EventHandler(TriggerSettingsTabListUpdate);
+            UIUpdateTimer.Tick += new EventHandler(TriggerAutoModeTabListUpdate);
 
             UIUpdateTimer.Start();
         }
 
         private void UpdatePerformanceBarColors(object source, EventArgs e)
         {
-            var highs = pact.PACTProcessOverwatch.Config.HighPerformanceProcessConfig.CoreList;
-            var normals = pact.PACTProcessOverwatch.Config.DefaultPerformanceProcessConfig.CoreList;
+            var highs = pact.PACTProcessOverwatch.ActiveConfig.HighPerformanceProcessConfig.CoreList;
+            var normals = pact.PACTProcessOverwatch.ActiveConfig.DefaultPerformanceProcessConfig.CoreList;
             for (int i = 0; i < ThreadBars.Count; i++)
             {
                 var bar = ThreadBars[i];
@@ -338,7 +335,7 @@ namespace PACTWPF
                 }
             }
 
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         bool ProcessSearchFilter(object obj)
@@ -364,17 +361,20 @@ namespace PACTWPF
 
         private void Button_Refresh_Click(object sender, RoutedEventArgs e)
         {
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
-        private void TriggerListUpdate(Object source, EventArgs e)
+        private void TriggerSettingsTabListUpdate(Object source, EventArgs e)
         {
             ListView_Normal_Initialized(this, null);
             ListView_HighPerformance_Initialized(this, null);
             ListView_Custom_Initialized(this, null);
             ListView_Blacklist_Initialized(this, null);
 
-            ListView_Custom_Validate();
+            if (ListView_Custom.SelectedItem == null)
+            {
+                Button_Custom_Configure.IsEnabled = false;
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////////
@@ -383,8 +383,7 @@ namespace PACTWPF
 
         private void ListView_Normal_Initialized(object sender, EventArgs e)
         {
-            RunningProcesses = pact.GetNormalPerformanceProcesses().ToList();
-            ListView_Normal.ItemsSource = RunningProcesses;
+            ListView_Normal.ItemsSource = pact.GetNormalPerformanceProcesses().ToList();
             ListView_Normal.Items.Filter = ProcessSearchFilter;
         }
 
@@ -400,10 +399,10 @@ namespace PACTWPF
 
         private void Button_Normal_Configure_Click(object sender, RoutedEventArgs e)
         {
-            var conf = OpenProcessConfigWindow("[Normal Priority Processes]", pact.ActivePACTConfig.DefaultPerformanceProcessConfig);
+            var conf = OpenProcessConfigWindow("[Normal Priority Processes]", pact.GetDefaultPerformanceConfig());
             if (conf != null)
             {
-                pact.UpdateDefaultPriorityProcessConfig(conf);
+                pact.UpdateDefaultPerformanceProcessConfig(conf);
             }
         }
 
@@ -413,8 +412,7 @@ namespace PACTWPF
         
         private void ListView_HighPerformance_Initialized(object sender, EventArgs e)
         {
-            HighPerformanceProcesses = pact.GetHighPerformanceProcesses().ToList();
-            ListView_HighPerformance.ItemsSource = HighPerformanceProcesses;
+            ListView_HighPerformance.ItemsSource = pact.GetHighPerformanceProcesses().ToList();
             ListView_HighPerformance.Items.Filter = ProcessSearchFilter;
         }
 
@@ -435,12 +433,12 @@ namespace PACTWPF
             {
                 pact.AddToHighPerformance(window.ProcessName);
             }
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_HighPerformance_Configure_Click(object sender, RoutedEventArgs e)
         {
-            var conf = OpenProcessConfigWindow("[High Priority Processes]", pact.ActivePACTConfig.HighPerformanceProcessConfig);
+            var conf = OpenProcessConfigWindow("[High Priority Processes]", pact.GetHighPerformanceConfig());
             if (conf != null)
             {
                 pact.UpdateHighPerformanceProcessConfig(conf);
@@ -453,8 +451,7 @@ namespace PACTWPF
 
         private void ListView_Custom_Initialized(object sender, EventArgs e)
         {
-            CustomProcesses = pact.GetCustomProcesses().ToList();
-            ListView_Custom.ItemsSource = CustomProcesses;
+            ListView_Custom.ItemsSource = pact.GetCustomProcesses().ToList();
             ListView_Custom.Items.Filter = ProcessSearchFilter;
         }
 
@@ -484,7 +481,7 @@ namespace PACTWPF
                     {
                         pact.AddToCustomPriority(itemList, conf);
                     }
-                    TriggerListUpdate(null, EventArgs.Empty);
+                    TriggerSettingsTabListUpdate(null, EventArgs.Empty);
                 }
             }
         }
@@ -498,16 +495,16 @@ namespace PACTWPF
                 pact.AddToCustomPriority(name, conf);
             }
 
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Custom_Configure_Click(object sender, RoutedEventArgs e)
         {
             string target = ListView_Custom.SelectedItem.ToString();
             ProcessConfig initial = new ProcessConfig();
-            if (pact.ActivePACTConfig.CustomPerformanceProcesses.ContainsKey(target))
+            if (pact.PACTProcessOverwatch.UserConfig.CustomPerformanceProcesses.ContainsKey(target))
             {
-                initial = pact.ActivePACTConfig.CustomPerformanceProcesses[target];
+                initial = pact.PACTProcessOverwatch.UserConfig.CustomPerformanceProcesses[target];
             }
 
             ProcessConfigEditWindow window = new ProcessConfigEditWindow(initial);
@@ -518,15 +515,7 @@ namespace PACTWPF
                 conf = window.GenerateConfig();
                 pact.AddToCustomPriority(ListView_Custom.SelectedItem.ToString(), conf);
             }
-            TriggerListUpdate(null, EventArgs.Empty);
-        }
-
-        private void ListView_Custom_Validate()
-        {
-            if (ListView_Custom.SelectedItem == null)
-            {
-                Button_Custom_Configure.IsEnabled = false;
-            }
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         ////////////////////////////////////////////////////////////////////////////
@@ -535,8 +524,7 @@ namespace PACTWPF
 
         private void ListView_Blacklist_Initialized(object sender, EventArgs e)
         {
-            BlacklistedProcesses = pact.GetBlacklistedProcesses().ToList();
-            ListView_Blacklist.ItemsSource = BlacklistedProcesses;
+            ListView_Blacklist.ItemsSource = pact.GetBlacklistedProcesses().ToList();
             ListView_Blacklist.Items.Filter = ProcessSearchFilter;
         }
 
@@ -558,9 +546,74 @@ namespace PACTWPF
                 pact.AddToBlacklist(window.ProcessName);
             }
             window.Close();
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
+        ////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////
+        ////                            AutoMode Tab                            ////
+        ////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////
+
+        private void TriggerAutoModeTabListUpdate(Object source, EventArgs e)
+        {
+            ListView_AutoModeDetections_Initialized(this, null);
+
+            if (ListView_AutoModeLaunchers.SelectedItem == null)
+            {
+                Button_AutoMode_Remove.IsEnabled = false;
+            }
+        }
+
+        private void Button_AutoMode_Toggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (pact.ToggleAutoMode())
+            {
+                Label_AutoMode.Content = "AUTO MODE ON";
+                Label_AutoMode.Foreground = System.Windows.Media.Brushes.Green;
+            }
+            else
+            {
+                Label_AutoMode.Content = "AUTO MODE OFF";
+                Label_AutoMode.Foreground = System.Windows.Media.Brushes.Red;
+            }
+        }
+
+        private void Button_AutoMode_Add_Click(object sender, RoutedEventArgs e)
+        {
+            ProcessNameEntryWindow window = new ProcessNameEntryWindow();
+            if (window.ShowDialog() == true)
+            {
+                pact.AddToAutoModeLaunchers(window.ProcessName);
+            }
+
+            ListView_AutoModeLaunchers_Initialized(this, null);
+        }
+
+        private void Button_AutoMode_Remove_Click(object sender, RoutedEventArgs e)
+        {
+            if (ListView_AutoModeLaunchers.SelectedItem != null)
+            {
+                pact.RemoveFromAutoModeLaunchers(ListView_AutoModeLaunchers.SelectedItem.ToString());
+            }
+
+            ListView_AutoModeLaunchers_Initialized(this, null);
+        }
+
+        private void ListView_AutoModeLaunchers_SelectionChanged(object sender, EventArgs e)
+        {
+            Button_AutoMode_Remove.IsEnabled = true;
+        }
+
+        private void ListView_AutoModeLaunchers_Initialized(object sender, EventArgs e)
+        {
+            ListView_AutoModeLaunchers.ItemsSource = pact.GetAutoModeLaunchers().ToList();
+        }
+
+        private void ListView_AutoModeDetections_Initialized(object sender, EventArgs e)
+        {
+            ListView_AutoModeDetections.ItemsSource = pact.GetAutoModeDetections().ToList();
+        }
 
         ////////////////////////////////////////////////////////////////////////////
         //                          Settings/Options Tab                          //
@@ -605,7 +658,7 @@ namespace PACTWPF
             {
                 pact.ImportHighPerformance(path);
             }
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_HighPriority_Export_Click(object sender, RoutedEventArgs e)
@@ -620,7 +673,7 @@ namespace PACTWPF
         private void Button_Options_HighPriority_Clear_Click(object sender, RoutedEventArgs e)
         {
             pact.ClearHighPerformance();
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_Blacklist_Import_Click(object sender, RoutedEventArgs e)
@@ -630,7 +683,7 @@ namespace PACTWPF
             {
                 pact.ImportBlacklist(path);
             }
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_Blacklist_Export_Click(object sender, RoutedEventArgs e)
@@ -645,7 +698,7 @@ namespace PACTWPF
         private void Button_Options_Blacklist_Clear_Click(object sender, RoutedEventArgs e)
         {
             pact.ClearBlackList();
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_Config_Import_Click(object sender, RoutedEventArgs e)
@@ -655,7 +708,7 @@ namespace PACTWPF
             {
                 pact.ImportConfig(path);
             }
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
             // I don't understand why (yet), but for some reason
             // the performance bars do not update if Reset
             // or Import config buttons are pressed.
@@ -676,22 +729,7 @@ namespace PACTWPF
         private void Button_Options_Custom_Clear_Click(object sender, RoutedEventArgs e)
         {
             pact.ClearCustoms();
-            TriggerListUpdate(null, EventArgs.Empty);
-        }
-
-        private void Button_Options_AutoMode_Toggle_Click(object sender, RoutedEventArgs e)
-        {
-            // TODO: Make auto-mode happen.
-            if (pact.ToggleAutoMode())
-            {
-                Label_AutoMode.Content = "AUTO MODE ON";
-                Label_AutoMode.Foreground = System.Windows.Media.Brushes.Green;
-            }
-            else
-            {
-                Label_AutoMode.Content = "AUTO MODE OFF";
-                Label_AutoMode.Foreground = System.Windows.Media.Brushes.Red;
-            }
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
         }
 
         private void Button_Options_About_Click(object sender, RoutedEventArgs e)
@@ -702,7 +740,7 @@ namespace PACTWPF
         private void Button_Options_ResetConfig_Click(object sender, RoutedEventArgs e)
         {
             pact.ResetConfig();
-            TriggerListUpdate(null, EventArgs.Empty);
+            TriggerSettingsTabListUpdate(null, EventArgs.Empty);
             // I don't understand why (yet), but for some reason
             // the performance bars do not update if Reset
             // or Import config buttons are pressed.

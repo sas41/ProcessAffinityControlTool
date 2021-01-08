@@ -16,7 +16,7 @@ namespace PACTWPF
 
         public Label CustomLabel { get; set; }
 
-        private static TimeSpan duration = TimeSpan.FromMilliseconds(1000);
+        private static TimeSpan duration = TimeSpan.FromMilliseconds(1500);
 
         public ThreadUtilizationBar(int threadNumber) : base()
         {

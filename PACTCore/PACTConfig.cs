@@ -37,14 +37,6 @@ namespace PACTCore
         [JsonInclude]
         public int ScanInterval { get; set; }
 
-        [JsonInclude]
-        public int AggressiveScanInterval { get; set; }
-
-        [JsonInclude]
-        public bool ForceAggressiveScan { get; set; }
-
-
-
         public PACTConfig()
         {
             CustomPerformanceProcesses = new CaseInsensitiveDictionary<ProcessConfig>();
@@ -55,8 +47,6 @@ namespace PACTCore
             DefaultPerformanceProcessConfig = new ProcessConfig();
 
             ScanInterval = 3000;
-            AggressiveScanInterval = 20;
-            ForceAggressiveScan = false;
 
             // This method of seeding is not the best.
             // I will likely change it at some point.
@@ -116,6 +106,22 @@ namespace PACTCore
             {
                 ClearProcessConfig(name);
                 Blacklist.Add(name);
+            }
+        }
+
+        public void AddToAutoModeLaunchers(string name)
+        {
+            if (!string.IsNullOrEmpty(name))
+            {
+                AutoModeLaunchers.Add(name);
+            }
+        }
+
+        public void RemoveFromAutoModeLaunchers(string name)
+        {
+            if (!string.IsNullOrEmpty(name) && AutoModeLaunchers.Contains(name))
+            {
+                AutoModeLaunchers.Remove(name);
             }
         }
 
