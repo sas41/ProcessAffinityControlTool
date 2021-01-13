@@ -36,10 +36,10 @@ namespace PACTCore
 
         public CaseInsensitiveHashSet AutoModeDetections { get; private set; }
 
-        public Dictionary<Process, Process> ChildParentPairs { get; private set; }
+        public Dictionary<int, string> ChildParentPairs { get; private set; }
 
         public bool FreshScanRequested { get; set; }
-        public bool ToggleRequested { get; set; }
+        public bool ScannerActive { get; set; }
 
 
 
@@ -54,10 +54,10 @@ namespace PACTCore
 
             AutoMode = true;
             AutoModeDetections = new CaseInsensitiveHashSet();
-            ChildParentPairs = new Dictionary<Process, Process>();
+            ChildParentPairs = new Dictionary<int, string>();
 
             FreshScanRequested = false;
-            ToggleRequested = false;
+            ScannerActive = false;
 
 
 
@@ -76,21 +76,18 @@ namespace PACTCore
 
         public bool ToggleProcessOverwatch()
         {
-            if (ScanTimer.Enabled)
+            if (ScannerActive)
             {
                 ActiveConfig = PausedConfig;
-                RequestFreshScan();
-                ToggleRequested = true;
+                ScannerActive = false;
             }
             else
             {
-                ToggleRequested = false;
-                RequestFreshScan();
-                ScanTimer.Enabled = true;
                 ActiveConfig = UserConfig;
+                ScanTimer.Enabled = true;
+                ScannerActive = true;
             }
-
-            return ActiveConfig == UserConfig;
+            return ScannerActive;
         }
 
         public bool ToggleAutoMode()
@@ -131,20 +128,18 @@ namespace PACTCore
                 }
 
                 ScanAndManage(ActiveConfig, FreshScanRequested);
+                FreshScanRequested = false;
 
-                if (ToggleRequested)
+                if (ScannerActive == false)
                 {
                     ScanTimer.Enabled = false;
                 }
-
-                FreshScanRequested = false;
-                ToggleRequested = false;
             }
         }
 
         private void UpdateChildParentPairs()
         {
-            Dictionary<Process, Process> currenChildParentPairs = new Dictionary<Process, Process>();
+            Dictionary<int, string> currenChildParentPairs = new Dictionary<int, string>();
             CaseInsensitiveHashSet currenAutoModeDetections = new CaseInsensitiveHashSet();
 
             foreach (var currentProcess in Process.GetProcesses())
@@ -154,9 +149,9 @@ namespace PACTCore
                     continue;
                 }
 
-                if (ChildParentPairs.ContainsKey(currentProcess))
+                if (ChildParentPairs.ContainsKey(currentProcess.Id))
                 {
-                    currenChildParentPairs.Add(currentProcess, ChildParentPairs[currentProcess]);
+                    currenChildParentPairs.Add(currentProcess.Id, ChildParentPairs[currentProcess.Id]);
                 }
                 else
                 {
@@ -166,12 +161,12 @@ namespace PACTCore
                         {
                             int pid = (int)performanceCounter.RawValue;
                             Process parent = Process.GetProcessById(pid);
-                            currenChildParentPairs.Add(currentProcess, parent);
+                            currenChildParentPairs.Add(currentProcess.Id, parent.ProcessName);
                         }
                         catch (ArgumentException)
                         {
                             // No parent
-                            currenChildParentPairs.Add(currentProcess, null);
+                            currenChildParentPairs.Add(currentProcess.Id, "");
                         }
                         catch (InvalidOperationException)
                         {
@@ -181,12 +176,12 @@ namespace PACTCore
                     }
                 }
 
-                if (currenChildParentPairs[currentProcess] != null)
+                if (!string.IsNullOrEmpty(currenChildParentPairs[currentProcess.Id]))
                 {
                     try
                     {
-                        var parent = currenChildParentPairs[currentProcess];
-                        if (UserConfig.AutoModeLaunchers.Contains(parent.ProcessName))
+                        var parent = currenChildParentPairs[currentProcess.Id];
+                        if (UserConfig.AutoModeLaunchers.Contains(parent))
                         {
                             currenAutoModeDetections.Add(currentProcess.ProcessName);
                         }

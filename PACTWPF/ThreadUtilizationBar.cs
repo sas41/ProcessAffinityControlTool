@@ -12,6 +12,7 @@ namespace PACTWPF
     class ThreadUtilizationBar : ProgressBar
     {
         private int AssociatedThreadNumber { get; set; }
+
         private PerformanceCounter BoundCounter { get; set; }
 
         public Label CustomLabel { get; set; }
@@ -48,19 +49,19 @@ namespace PACTWPF
         {
             if (isNormal && isHigh)
             {
-                this.Foreground = Brushes.Red;
+                this.Foreground = Brushes.Crimson;
             }
             else if(isNormal)
             {
-                this.Foreground = Brushes.Yellow;
+                this.Foreground = Brushes.Gold;
             }
             else if (isHigh)
             {
-                this.Foreground = Brushes.Blue;
+                this.Foreground = Brushes.DeepSkyBlue;
             }
             else
             {
-                this.Foreground = Brushes.Green;
+                this.Foreground = Brushes.MediumSeaGreen;
             }
         }
     }

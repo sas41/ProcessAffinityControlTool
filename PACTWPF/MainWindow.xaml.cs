@@ -399,7 +399,7 @@ namespace PACTWPF
 
         private void Button_Normal_Configure_Click(object sender, RoutedEventArgs e)
         {
-            var conf = OpenProcessConfigWindow("[Normal Priority Processes]", pact.GetDefaultPerformanceConfig());
+            var conf = OpenProcessConfigWindow("[Normal Performance Processes]", pact.GetDefaultPerformanceConfig());
             if (conf != null)
             {
                 pact.UpdateDefaultPerformanceProcessConfig(conf);
@@ -438,7 +438,7 @@ namespace PACTWPF
 
         private void Button_HighPerformance_Configure_Click(object sender, RoutedEventArgs e)
         {
-            var conf = OpenProcessConfigWindow("[High Priority Processes]", pact.GetHighPerformanceConfig());
+            var conf = OpenProcessConfigWindow("[High Performance Processes]", pact.GetHighPerformanceConfig());
             if (conf != null)
             {
                 pact.UpdateHighPerformanceProcessConfig(conf);
