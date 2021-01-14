@@ -32,3 +32,12 @@ For Pact 1.1.0, please check help.txt for a list of commands, or type the help c
 
 If you find this tool helpful and wish to donate, you can do so here: https://www.paypal.me/sas41
 ---
+
+# Gallery:
+#### PACT for Windows (PACTWPF):
+#### [PACT for Windows Overview/Tutorial (4 minutes)](https://streamable.com/1oey1h)
+<img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/1.png" width="auto">
+<img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/2.png" width="auto">
+<img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/3.png" width="auto">
+<img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/4.png" width="auto">
+<img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/5.png" width="auto">
