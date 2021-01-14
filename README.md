@@ -4,7 +4,7 @@
 </p>
 
 # PACT
-PACT is a tool that allows you to section off different processes in to different cores/threads on your CPU automagically.
+PACT is a library and a tool that allows you to section off different processes in to different cores/threads on your CPU automagically.
 
 It's default mode of operation allows you to pick your "Default Cores" and process priority.
 All accessible processes run on those cores and on that priority setting.
