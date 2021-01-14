@@ -15,12 +15,17 @@ For special occasions you can choose to tag some process as "Custom Performance"
 
 There is also a blacklist option, to ignore processes that don't play with PACT too well.
 
-# PACT 2.0 is ready, but while I figure out this software license stuff, there will be no releases.
-# You can either build it from source and use it as per the current [License](https://github.com/sas41/ProcessAffinityControlTool/blob/master/LICENSE.md).
-# Or just...
+PACT can also detect games launched via Steam, Origin, GoG Galaxy, UPlay and more (or anything you want) and apply temporary "High Priority Status" to them.
 
-# [Download Old Universal Version (1.1.0) <img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/icon/PACT%20Logo.png" width="48">](https://github.com/sas41/ProcessAffinityControlTool/releases/tag/1.1.0)
+#### The PACTCore Library is free and under the MIT License.
+#### For the various ready-to-use programs such as PACTWPF and PACTUniversal, check the [LICENSE.md](https://github.com/sas41/ProcessAffinityControlTool/blob/master/LICENSE.md) file.
+#### The Windows version of PACT (PACTWPF) is ready for testing and it's free for personal, non-commercial use if you build it.
+#### PACTUniversal for Windows, Linux, Mac and anything that can run a .Net Core application, will be avialable soon&trade;.
+#### [If you so wish, you can pay for a copy on Steam!](https://store.steampowered.com/app/1517370)
 
+
+#### Until PACTUniversal is ready, you can still use the old version of PACT on non-Windows Operating systems!
+#### [Download Old Universal Version (1.1.0) <img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/icon/PACT%20Logo.png" width="48">](https://github.com/sas41/ProcessAffinityControlTool/releases/tag/1.1.0)
 For Pact 1.1.0, please check help.txt for a list of commands, or type the help command in app.
 
 -----
