@@ -57,7 +57,7 @@ namespace PACTCore
             ChildParentPairs = new Dictionary<int, string>();
 
             FreshScanRequested = false;
-            ScannerActive = false;
+            ScannerActive = true;
 
 
 

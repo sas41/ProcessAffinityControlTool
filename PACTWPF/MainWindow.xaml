@@ -366,7 +366,7 @@
                               Drop="ListView_Custom_Drop"
                               AllowDrop="True"/>
 
-                    <Label Content="Blacklist"
+                    <Label Content="Ignore List"
                            Grid.Row="1"
                            Grid.Column="3"
                            HorizontalAlignment="Center"
@@ -502,19 +502,19 @@
                             Click="Button_Options_HighPriority_Clear_Click"/>
 
                     <Button x:Name="Button_Options_Blacklist_Import"
-                            Content="Import Blacklist"
+                            Content="Import Ignore List"
                             Grid.Row="1"
                             Grid.Column="0"
                             Margin="10,10,10,10"
                             Click="Button_Options_Blacklist_Import_Click"/>
                     <Button x:Name="Button_Options_Blacklist_Export"
-                            Content="Export Blacklist"
+                            Content="Export Ignore List"
                             Grid.Row="1"
                             Grid.Column="1"
                             Margin="10,10,10,10"
                             Click="Button_Options_Blacklist_Export_Click"/>
                     <Button x:Name="Button_Options_Blacklist_Clear"
-                            Content="Clear Blacklist"
+                            Content="Clear Ignore List"
                             Grid.Row="1"
                             Grid.Column="3"
                             Margin="10,10,10,10"

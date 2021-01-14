@@ -94,7 +94,7 @@ namespace PACTWPF
         public void InitTrayIcon()
         {
             TrayIcon = new System.Windows.Forms.NotifyIcon();
-            TrayIcon.Icon = new Icon("tray.ico");
+            TrayIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon($"{AppDomain.CurrentDomain.BaseDirectory}/{Process.GetCurrentProcess().ProcessName}.exe");
             TrayIcon.Text = "Click to bring PACT back.";
             TrayIcon.Visible = true;
 
