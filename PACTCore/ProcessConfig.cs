@@ -29,6 +29,7 @@ namespace PACTCore
             ReCalculateMask();
             Priority = ProcessPriorityClass.Normal;
         }
+
         public ProcessConfig(List<int> cores, ProcessPriorityClass priority)
         {
             int maxCount = Environment.ProcessorCount;
@@ -41,7 +42,6 @@ namespace PACTCore
             ReCalculateMask();
             Priority = priority;
         }
-
 
         public long ReCalculateMask()
         {
