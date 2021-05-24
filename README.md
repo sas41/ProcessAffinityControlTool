@@ -35,7 +35,11 @@ If you find this tool helpful and wish to donate, you can do so here: https://ww
 
 # Gallery:
 #### PACT for Windows (PACTWPF):
-#### [PACT for Windows Overview/Tutorial (4 minutes)](https://streamable.com/1oey1h)
+#### PACT for Windows Overview/Tutorial (4 minutes)
+
+https://user-images.githubusercontent.com/2854477/119327998-468cad80-bc8c-11eb-861a-dc0f92431aff.mp4
+
+
 <img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/1.png" width="auto">
 <img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/2.png" width="auto">
 <img src="https://raw.githubusercontent.com/sas41/ProcessAffinityControlTool/master/Steam%20Assets/Screenshots/3.png" width="auto">
