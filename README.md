@@ -30,6 +30,10 @@ For Pact 1.1.0, please check help.txt for a list of commands, or type the help c
 
 -----
 
+### Update: Pact-WPF can now be launched, minized to system tray with the following argument: ``-start_minimized`` !
+
+-----
+
 If you find this tool helpful and wish to donate, you can do so here: https://www.paypal.me/sas41
 ---
 
