@@ -41,6 +41,12 @@ namespace PACTWPF
 
             pact.ConfigUpdated += UpdatePerformanceBarColors;
             UpdatePerformanceBarColors(this, EventArgs.Empty);
+
+            var startMinimized = (Application.Current as App).StartMinimized;
+            if (startMinimized)
+            {
+                Button_MinimizeToTray_Click(this, new RoutedEventArgs());
+            }
         }
 
         private void Label_Title_MouseDown(object sender, MouseButtonEventArgs e)

@@ -13,5 +13,15 @@ namespace PACTWPF
     /// </summary>
     public partial class App : Application
     {
+        public bool StartMinimized { get; set; }
+        private void Application_Startup(object sender, StartupEventArgs e)
+        {
+            if (e.Args.Length > 0)
+            {
+                string[] arguments = e.Args.Select(str => str.ToLower()).ToArray();
+                this.StartMinimized = arguments.Contains("-start_minimized");
+            }
+            //base.OnStartup(e);
+        }
     }
 }
