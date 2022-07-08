@@ -4,7 +4,7 @@
 </p>
 
 # PACT
-PACT is a library and a tool that allows you to section off different processes in to different cores/threads on your CPU automagically.
+PACT is a free library and a tool that allows you to section off different processes in to different cores/threads on your CPU automagically.
 
 It's default mode of operation allows you to pick your "Default Cores" and process priority.
 All accessible processes run on those cores and on that priority setting.
@@ -17,9 +17,7 @@ There is also a blacklist option, to ignore processes that don't play with PACT 
 
 PACT can also detect games launched via Steam, Origin, GoG Galaxy, UPlay and more (or anything you want) and apply temporary "High Priority Status" to them.
 
-#### The PACTCore Library is free and under the MIT License.
-#### For the various ready-to-use programs such as PACTWPF and PACTUniversal, check the [LICENSE.md](https://github.com/sas41/ProcessAffinityControlTool/blob/master/LICENSE.md) file.
-#### The Windows version of PACT (PACTWPF) is ready for testing and it's free for personal, non-commercial use if you build it.
+#### PACT is free and under the MIT License.
 #### PACTUniversal for Windows, Linux, Mac and anything that can run a .Net Core application, will be avialable soon&trade;.
 #### [If you so wish, you can pay for a copy on Steam!](https://store.steampowered.com/app/1517370)
 
