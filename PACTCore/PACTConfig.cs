@@ -37,6 +37,10 @@ namespace PACTCore
         [JsonInclude]
         public int ScanInterval { get; set; }
 
+        // Store user preference about starting the app at startup.
+        [JsonInclude]
+        public bool StartWithWindows { get; set; }
+
         public PACTConfig()
         {
             CustomPerformanceProcesses = new CaseInsensitiveDictionary<ProcessConfig>();
@@ -67,8 +71,36 @@ namespace PACTCore
             AutoModeLaunchers.Add("UplayService");
             AutoModeLaunchers.Add("x64launcher");
             AutoModeLaunchers.Add("x86launcher");
+            
+            // Apply startup setting
+            UpdateStartupSetting();
         }
 
+        // Method to add or remove the app from startup based on the `StartWithWindows` value
+        public void UpdateStartupSetting()
+        {
+            const string appName = "PACTApp";
+            string appPath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+            {
+                if (StartWithWindows)
+                {
+                    key.SetValue(appName, appPath);
+                }
+                else if (key.GetValue(appName) != null)
+                {
+                    key.DeleteValue(appName);
+                }
+            }
+        }
+
+        // Call this method when changing the StartWithWindows setting at runtime
+        public void SetStartWithWindows(bool startWithWindows)
+        {
+            StartWithWindows = startWithWindows;
+            UpdateStartupSetting();
+        }
 
 
         public void RecalculateAffinities()

@@ -401,10 +401,12 @@
                         <ColumnDefinition Width="1*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="1*" />
-                        <RowDefinition Height="1*" />
-                        <RowDefinition Height="1*" />
-                        <RowDefinition Height="6*" />
+                          <RowDefinition Height="1*" />
+                          <RowDefinition Height="1*" />
+                          <RowDefinition Height="1*" />
+                          <RowDefinition Height="1*" />
+                          <RowDefinition Height="3*" />
+                          <RowDefinition Height="1*" />
                     </Grid.RowDefinitions>
                     
                     <Button x:Name="Button_AutoMode_Toggle"
@@ -482,76 +484,83 @@
                         <RowDefinition Height="1*" />
                     </Grid.RowDefinitions>
 
-                    <Button x:Name="Button_Options_HighPriority_Import"
-                            Content="Import High Perf. List"
-                            Grid.Row="0"
-                            Grid.Column="0"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_HighPriority_Import_Click"/>
-                    <Button x:Name="Button_Options_HighPriority_Export"
-                            Content="Export High Perf. List"
-                            Grid.Row="0"
-                            Grid.Column="1"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_HighPriority_Export_Click"/>
-                    <Button x:Name="Button_Options_HighPriority_Clear"
-                            Content="Clear High Perf. List"
-                            Grid.Row="0"
-                            Grid.Column="3"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_HighPriority_Clear_Click"/>
+                        <Button x:Name="Button_Options_HighPriority_Import"
+                                Content="Import High Perf. List"
+                                Grid.Row="0"
+                                Grid.Column="0"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_HighPriority_Import_Click"/>
+                        <Button x:Name="Button_Options_HighPriority_Export"
+                                Content="Export High Perf. List"
+                                Grid.Row="0"
+                                Grid.Column="1"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_HighPriority_Export_Click"/>
+                        <Button x:Name="Button_Options_HighPriority_Clear"
+                                Content="Clear High Perf. List"
+                                Grid.Row="0"
+                                Grid.Column="3"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_HighPriority_Clear_Click"/>
 
-                    <Button x:Name="Button_Options_Blacklist_Import"
-                            Content="Import Ignore List"
-                            Grid.Row="1"
-                            Grid.Column="0"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_Blacklist_Import_Click"/>
-                    <Button x:Name="Button_Options_Blacklist_Export"
-                            Content="Export Ignore List"
-                            Grid.Row="1"
-                            Grid.Column="1"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_Blacklist_Export_Click"/>
-                    <Button x:Name="Button_Options_Blacklist_Clear"
-                            Content="Clear Ignore List"
-                            Grid.Row="1"
-                            Grid.Column="3"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_Blacklist_Clear_Click"/>
+                        <Button x:Name="Button_Options_Blacklist_Import"
+                                Content="Import Ignore List"
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_Blacklist_Import_Click"/>
+                        <Button x:Name="Button_Options_Blacklist_Export"
+                                Content="Export Ignore List"
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_Blacklist_Export_Click"/>
+                        <Button x:Name="Button_Options_Blacklist_Clear"
+                                Content="Clear Ignore List"
+                                Grid.Row="1"
+                                Grid.Column="3"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_Blacklist_Clear_Click"/>
 
-                    <Button x:Name="Button_Options_Config_Import"
-                            Content="Import Config"
-                            Grid.Row="2"
-                            Grid.Column="0"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_Config_Import_Click" />
-                    <Button x:Name="Button_Options_Config_Export"
-                            Content="Export Config"
-                            Grid.Row="2"
-                            Grid.Column="1"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_Config_Export_Click"/>
-                    <Button x:Name="Button_Options_Custom_Clear"
-                            Content="Clear Custom List"
-                            Grid.Row="2"
-                            Grid.Column="3"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_Custom_Clear_Click"/>
+                        <Button x:Name="Button_Options_Config_Import"
+                                Content="Import Config"
+                                Grid.Row="2"
+                                Grid.Column="0"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_Config_Import_Click" />
+                        <Button x:Name="Button_Options_Config_Export"
+                                Content="Export Config"
+                                Grid.Row="2"
+                                Grid.Column="1"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_Config_Export_Click"/>
+                        <Button x:Name="Button_Options_Custom_Clear"
+                                Content="Clear Custom List"
+                                Grid.Row="2"
+                                Grid.Column="3"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_Custom_Clear_Click"/>
 
-                    <Button x:Name="Button_Options_About"
-                            Content="About PACT..."
-                            Grid.Row="5"
-                            Grid.Column="0"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_About_Click"/>
+                        <Button x:Name="Button_StartWithWindows"
+                                Content="Toggle Start With Windows"
+                                Grid.Row="5"
+                                Grid.Column="1"
+                                Margin="10,10,10,10"
+                                Click="Button_StartWithWindows_Click"/>
 
-                    <Button x:Name="Button_Options_ResetConfig"
-                            Content="Reset Config"
-                            Grid.Row="5"
-                            Grid.Column="3"
-                            Margin="10,10,10,10"
-                            Click="Button_Options_ResetConfig_Click"/>
+                        <Button x:Name="Button_Options_About"
+                                Content="About PACT..."
+                                Grid.Row="5"
+                                Grid.Column="0"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_About_Click"/>
+
+                        <Button x:Name="Button_Options_ResetConfig"
+                                Content="Reset Config"
+                                Grid.Row="5"
+                                Grid.Column="3"
+                                Margin="10,10,10,10"
+                                Click="Button_Options_ResetConfig_Click"/>
 
                 </Grid>
             </TabItem>

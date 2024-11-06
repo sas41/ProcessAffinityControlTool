@@ -784,5 +784,16 @@ namespace PACTWPF
             }
         }
 
+        private void Button_StartWithWindows_Click(object sender, RoutedEventArgs e)
+        {
+            // Toggle the StartWithWindows setting
+            var config = pact.PACTProcessOverwatch.ActiveConfig;
+            config.StartWithWindows = !config.StartWithWindows;
+            config.UpdateStartupSetting();
+
+            // Update button content based on the new state
+            var button = sender as Button;
+            button.Content = config.StartWithWindows ? "Disable Start With Windows" : "Enable Start With Windows";
+        }
     }
 }
