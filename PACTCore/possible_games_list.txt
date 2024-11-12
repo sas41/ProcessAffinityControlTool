@@ -1255,6 +1255,7 @@ crysiswars
 crysiswars64
 csaatutorial
 csgo
+cs2
 csi4
 csisyncclient
 cso2launcher
