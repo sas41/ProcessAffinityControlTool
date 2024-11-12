@@ -1,5 +1,4 @@
-﻿cs2
-4-game_dx12_profile
+﻿4-game_dx12_profile
 4x4
 4x42
 4x4game
@@ -1256,6 +1255,7 @@ crysiswars
 crysiswars64
 csaatutorial
 csgo
+cs2
 csi4
 csisyncclient
 cso2launcher
