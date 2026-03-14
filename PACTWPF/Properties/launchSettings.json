@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "PACTWPF": {
-      "commandName": "Project",
-      "commandLineArgs": "-start_minimized"
-    }
-  }
-}
