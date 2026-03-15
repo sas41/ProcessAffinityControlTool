@@ -1,11 +1,16 @@
 use iced::widget::{
-    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
+    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, ProcessGroup};
+use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
+use crate::gui::topology_diagram::draw_core_selector;
 use crate::gui::Message as AppMessage;
-use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
+
+fn group_core_toggle_message(index: usize, checked: bool) -> AppMessage {
+    AppMessage::GroupEditorMessage(Message::CoreToggled(index, checked))
+}
 
 pub trait ProcessGroupExt {
     // `trait` is Rust's interface contract (like a C# interface).
@@ -21,6 +26,7 @@ impl ProcessGroupExt for ProcessGroup {
             priority: None,
             is_default: false,
             is_blacklist: false,
+            is_auto_mode_group: false,
         }
     }
 }
@@ -40,6 +46,7 @@ pub struct GroupEditor {
     pub name: String,
     pub is_blacklist: bool,
     pub is_default: bool,
+    pub is_auto_mode_group: bool,
 
     pub affinity_enabled: bool,
     // One checkbox entry per logical core index.
@@ -59,6 +66,7 @@ pub enum Message {
     NameChanged(String),
     ToggleDefault,
     ToggleBlacklist,
+    ToggleAutoModeGroup,
     ToggleAffinity,
     TogglePriority,
     PriorityChanged(usize),
@@ -74,6 +82,21 @@ pub enum Message {
 }
 
 impl GroupEditor {
+    fn selector_len(num_cores: usize) -> usize {
+        let topo = crate::core::topology::get_topology();
+        let max_logical = topo
+            .topology_view()
+            .groups
+            .iter()
+            .flat_map(|g| g.physical_cores.iter())
+            .flat_map(|c| c.threads.iter())
+            .map(|t| t.logical_index)
+            .max()
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        num_cores.max(max_logical)
+    }
+
     /// Builds an editor from an existing group or a new empty draft.
     ///
     /// Selection behavior:
@@ -88,7 +111,8 @@ impl GroupEditor {
         let priority_enabled = g.priority.is_some();
 
         // `vec![x; n]` builds a vector with `n` repeated copies of `x`.
-        let mut core_checks = vec![false; num_cores];
+        let selector_len = Self::selector_len(num_cores);
+        let mut core_checks = vec![false; selector_len];
         // `if let` pattern-matches only one case and skips the rest.
         if let Some(ref aff) = g.affinity {
             // `ref` borrows in a pattern (avoid moving out of `g.affinity`).
@@ -109,6 +133,7 @@ impl GroupEditor {
             name: g.name,
             is_blacklist: g.is_blacklist,
             is_default: g.is_default,
+            is_auto_mode_group: g.is_auto_mode_group,
             affinity_enabled,
             core_checks,
             priority_enabled,
@@ -138,6 +163,13 @@ impl GroupEditor {
                 self.is_blacklist = !self.is_blacklist;
                 if self.is_blacklist {
                     self.is_default = false;
+                    self.is_auto_mode_group = false;
+                }
+            }
+            Message::ToggleAutoModeGroup => {
+                self.is_auto_mode_group = !self.is_auto_mode_group;
+                if self.is_auto_mode_group {
+                    self.is_blacklist = false;
                 }
             }
             Message::ToggleAffinity => self.affinity_enabled = !self.affinity_enabled,
@@ -212,6 +244,7 @@ impl GroupEditor {
                     priority,
                     is_default: self.is_default,
                     is_blacklist: self.is_blacklist,
+                    is_auto_mode_group: self.is_auto_mode_group,
                 });
                 self.open = false;
             }
@@ -225,7 +258,7 @@ impl GroupEditor {
         }
     }
 
-    pub fn view(&self, _num_cores: usize) -> Element<'_, AppMessage> {
+    pub fn view(&self, _num_cores: usize, topology_group_repeat: usize) -> Element<'_, AppMessage> {
         // `'_` is an inferred lifetime placeholder (borrowed UI tree tied to `&self`).
         let title = if self.editing_name.is_empty() {
             "New Group"
@@ -250,6 +283,10 @@ impl GroupEditor {
             checkbox(self.is_blacklist)
                 .label("Blacklist")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleBlacklist)),
+            Space::new().width(12.0),
+            checkbox(self.is_auto_mode_group)
+                .label("Auto Mode group")
+                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAutoModeGroup)),
         ]
         .spacing(10);
 
@@ -296,42 +333,13 @@ impl GroupEditor {
 
                 content = content.push(quick_select);
 
-                let procs = topo.processors();
-                let mut grid_rows = Column::new().spacing(4);
-                let mut current_row = Row::new().spacing(6);
-                let mut items_in_row = 0;
-
-                for (i, checked) in self.core_checks.iter().enumerate() {
-                    // Prefix core labels when topology can distinguish performance/efficiency cores.
-                    let lbl = if let Some(p) = procs.iter().find(|p| p.logical_index == i) {
-                        match p.kind {
-                            crate::core::topology::CoreKind::Pcore => format!("P{i}"),
-                            crate::core::topology::CoreKind::Ecore => format!("E{i}"),
-                            _ => format!("{i}"),
-                        }
-                    } else {
-                        format!("{i}")
-                    };
-
-                    let checkbox = checkbox(*checked).label(lbl).on_toggle(move |c| {
-                        // `move` captures `i` by value so each closure keeps its own index.
-                        AppMessage::GroupEditorMessage(Message::CoreToggled(i, c))
-                    });
-
-                    current_row = current_row.push(checkbox);
-                    items_in_row += 1;
-
-                    if items_in_row >= 8 {
-                        grid_rows = grid_rows.push(current_row);
-                        current_row = Row::new().spacing(6);
-                        items_in_row = 0;
-                    }
-                }
-                if items_in_row > 0 {
-                    grid_rows = grid_rows.push(current_row);
-                }
-
-                content = content.push(grid_rows);
+                let topo_view = topo.topology_view();
+                content = content.push(draw_core_selector(
+                    &topo_view,
+                    &self.core_checks,
+                    topology_group_repeat,
+                    group_core_toggle_message,
+                ));
             }
             content
         };
@@ -380,24 +388,32 @@ impl GroupEditor {
         let name_ok = !self.name.trim().is_empty();
         let affinity_ok = !self.affinity_enabled || self.core_checks.iter().any(|&c| c);
 
-        let actions_row = row![
-            button("OK")
-                .on_press(AppMessage::GroupEditorMessage(Message::Ok))
-                .style(move |_, _status| {
-                    if name_ok && affinity_ok {
-                        button::Style {
-                            background: Some(Background::Color(Color::from_rgb(0.2, 0.4, 0.8))),
-                            text_color: Color::WHITE,
-                            ..Default::default()
-                        }
-                    } else {
-                        button::Style {
-                            background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
-                            text_color: Color::WHITE,
-                            ..Default::default()
-                        }
+        let ok_button = {
+            let btn = button("OK").style(move |_, _status| {
+                if name_ok && affinity_ok {
+                    button::Style {
+                        background: Some(Background::Color(Color::from_rgb(0.2, 0.4, 0.8))),
+                        text_color: Color::WHITE,
+                        ..Default::default()
                     }
-                }),
+                } else {
+                    button::Style {
+                        background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
+                        text_color: Color::WHITE,
+                        ..Default::default()
+                    }
+                }
+            });
+
+            if name_ok && affinity_ok {
+                btn.on_press(AppMessage::GroupEditorMessage(Message::Ok))
+            } else {
+                btn
+            }
+        };
+
+        let actions_row = row![
+            ok_button,
             button("Cancel").on_press(AppMessage::GroupEditorMessage(Message::Cancel)),
         ]
         .spacing(10);
@@ -425,7 +441,7 @@ impl GroupEditor {
         .padding(20);
 
         let dialog = container(scrollable(content).height(Length::Shrink))
-            .max_width(520)
+            .max_width(860)
             .style(|_| iced::widget::container::Style {
                 background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
                 border: Border {

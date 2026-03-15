@@ -31,6 +31,7 @@ set -euo pipefail
 BINARY_NAME="process_affinity_control_tool"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT_DIR="$SCRIPT_DIR/publish"
+WINDOWS_COMPAT_INC="$SCRIPT_DIR/.cross/windows-headers"
 
 # ─── Detect environment ───────────────────────────────────────────────────────
 
@@ -85,6 +86,16 @@ fail() { echo "✗  $*" >&2; }
 
 # ─── Per-target build ─────────────────────────────────────────────────────────
 
+ensure_windows_compat_headers() {
+    mkdir -p "$WINDOWS_COMPAT_INC"
+    cat >"$WINDOWS_COMPAT_INC/BaseTsd.h" <<'EOF'
+#ifndef PACT_BASETSD_COMPAT_H
+#define PACT_BASETSD_COMPAT_H
+#include <basetsd.h>
+#endif
+EOF
+}
+
 build_target() {
     local TARGET="$1"    # Rust triple
     local PLATFORM="$2"  # linux | windows | macos
@@ -132,6 +143,10 @@ build_target() {
 
     # ── Run ───────────────────────────────────────────────────────────────────
     cd "$SCRIPT_DIR"
+    if [ "$PLATFORM" = "windows" ]; then
+        ensure_windows_compat_headers
+    fi
+
     if [ "$TOOL" = cross ]; then
         # Use an isolated target dir so cross never picks up host-compiled
         # build scripts (which require the host glibc, not the container's).
@@ -139,7 +154,11 @@ build_target() {
         mkdir -p "$CROSS_TARGET_DIR"
          # shellcheck disable=SC2086
          if [ "$PLATFORM" = "windows" ]; then
-             HWLOC_SYS_USE_VENDORED=1 run_cross build --release --target "$TARGET" \
+             local WIN_C_INCLUDE="/project/.cross/windows-headers"
+             HWLOC_SYS_USE_VENDORED=1 \
+             C_INCLUDE_PATH="$WIN_C_INCLUDE${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}" \
+             CPLUS_INCLUDE_PATH="$WIN_C_INCLUDE${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" \
+             run_cross build --release --target "$TARGET" \
                  --target-dir "$CROSS_TARGET_DIR" $FEATURES
          else
              run_cross build --release --target "$TARGET" \
@@ -147,7 +166,14 @@ build_target() {
          fi
     else
         # shellcheck disable=SC2086
-        cargo build --release --target "$TARGET" $FEATURES
+        if [ "$PLATFORM" = "windows" ]; then
+            HWLOC_SYS_USE_VENDORED=1 \
+            CFLAGS_x86_64_pc_windows_gnu="-I$WINDOWS_COMPAT_INC ${CFLAGS_x86_64_pc_windows_gnu:-}" \
+            CPPFLAGS_x86_64_pc_windows_gnu="-I$WINDOWS_COMPAT_INC ${CPPFLAGS_x86_64_pc_windows_gnu:-}" \
+            cargo build --release --target "$TARGET" $FEATURES
+        else
+            cargo build --release --target "$TARGET" $FEATURES
+        fi
     fi
 
     # ── Copy output ───────────────────────────────────────────────────────────

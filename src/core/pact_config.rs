@@ -202,6 +202,11 @@ impl PACTConfig {
         self.groups.iter().find(|g| g.is_default)
     }
 
+    /// Returns the configured auto-mode target group.
+    pub fn auto_mode_group(&self) -> Option<&ProcessGroup> {
+        self.groups.iter().find(|g| g.is_auto_mode_group)
+    }
+
     /// Finds a group by name, case-insensitively.
     pub fn group_by_name(&self, name: &str) -> Option<&ProcessGroup> {
         let lower = name.to_lowercase();
@@ -243,6 +248,12 @@ impl PACTConfig {
             }
         }
 
+        if group.is_auto_mode_group {
+            for g in &mut self.groups {
+                g.is_auto_mode_group = false;
+            }
+        }
+
         self.groups.push(group);
         true
     }
@@ -266,6 +277,14 @@ impl PACTConfig {
             for (i, g) in self.groups.iter_mut().enumerate() {
                 if i != pos {
                     g.is_default = false;
+                }
+            }
+        }
+
+        if new_group.is_auto_mode_group {
+            for (i, g) in self.groups.iter_mut().enumerate() {
+                if i != pos {
+                    g.is_auto_mode_group = false;
                 }
             }
         }

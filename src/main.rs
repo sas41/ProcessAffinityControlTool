@@ -9,7 +9,6 @@ mod gui;
 use std::time::Duration;
 
 use core::topology::TopologyView;
-use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -17,6 +16,7 @@ use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
+use gui::AppCache;
 use iced::widget::{button, column, container, scrollable, text};
 use iced::{Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
@@ -114,6 +114,9 @@ pub struct ProcessAffinityApp {
     /// CPU topology snapshot loaded at startup.
     pub topo_view: TopologyView,
 
+    /// Multiplier used to duplicate topology groups for layout testing.
+    pub topology_group_repeat: usize,
+
     /// Group editor modal state.
     pub group_editor: Option<GroupEditor>,
 
@@ -158,6 +161,7 @@ impl Default for ProcessAffinityApp {
             active_tab: gui::TabId::default(),
             cache,
             topo_view,
+            topology_group_repeat: 1,
             group_editor: None,
             process_editor: None,
             custom_process_editor: None,
@@ -496,12 +500,18 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                         app.icon_rgba.2,
                     )
                     .ok();
-                    let (_, open_task) = iced::window::open(iced::window::Settings {
+                    let mut settings = iced::window::Settings {
                         min_size: Some(iced::Size::new(700.0, 560.0)),
                         exit_on_close_request: false,
                         icon,
                         ..Default::default()
-                    });
+                    };
+                    #[cfg(target_os = "linux")]
+                    {
+                        settings.platform_specific.application_id =
+                            "com.sas41.processaffinitycontroltool".to_string();
+                    }
+                    let (_, open_task) = iced::window::open(settings);
                     return open_task.map(|_| gui::Message::Tick);
                 }
 
@@ -513,12 +523,18 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                             app.icon_rgba.2,
                         )
                         .ok();
-                        let (_, open_task) = iced::window::open(iced::window::Settings {
+                        let mut settings = iced::window::Settings {
                             min_size: Some(iced::Size::new(700.0, 560.0)),
                             exit_on_close_request: false,
                             icon,
                             ..Default::default()
-                        });
+                        };
+                        #[cfg(target_os = "linux")]
+                        {
+                            settings.platform_specific.application_id =
+                                "com.sas41.processaffinitycontroltool".to_string();
+                        }
+                        let (_, open_task) = iced::window::open(settings);
                         return open_task.map(|_| gui::Message::Tick);
                     } else if ev.id == tray.quit_id {
                         app.pact.stop_scan_handler();
@@ -630,7 +646,13 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
         .padding(iced::Padding::from([5, 14]));
 
     let content: Element<'_, gui::Message> = match &app.active_tab {
-        gui::TabId::Status => tab_status::view(&app.cache, &app.topo_view, app.num_cores).into(),
+        gui::TabId::Status => tab_status::view(
+            &app.cache,
+            &app.topo_view,
+            app.num_cores,
+            app.topology_group_repeat,
+        )
+        .into(),
         gui::TabId::Configure => tab_configure::view(
             &app.cache,
             app.dragging_process.as_deref(),
@@ -646,7 +668,7 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
     if let Some(editor) = &app.group_editor {
         iced::widget::Stack::new()
             .push(main_layout)
-            .push(editor.view(app.num_cores))
+            .push(editor.view(app.num_cores, app.topology_group_repeat))
             .into()
     } else if let Some(editor) = &app.process_editor {
         iced::widget::Stack::new()
@@ -656,7 +678,7 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
     } else if let Some(editor) = &app.custom_process_editor {
         iced::widget::Stack::new()
             .push(main_layout)
-            .push(editor.view())
+            .push(editor.view(app.topology_group_repeat))
             .into()
     } else if app.groups_help_open {
         iced::widget::Stack::new()
@@ -673,12 +695,18 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
 /// We run as a daemon so the process can outlive windows and stay available from the
 /// tray; windows are opened explicitly during boot and from tray actions.
 fn main() -> iced::Result {
+    if std::env::args().any(|a| a == "--topology-report") {
+        println!("{}", core::topology::topology_report());
+        return Ok(());
+    }
+
     // `Result<T, E>` is a success/error return type (like returning value-or-exception outcome explicitly).
     // Linux tray integration requires GTK initialization on the main thread.
     #[cfg(target_os = "linux")]
     gtk::init().expect("Failed to initialize GTK (required for system tray)");
 
     let settings = Settings {
+        id: Some("com.sas41.processaffinitycontroltool".to_string()),
         default_text_size: 14.into(),
         ..Default::default()
     };
@@ -694,22 +722,56 @@ fn main() -> iced::Result {
         view(app)
     }
 
+    /// Parse `--topology-dup N` / `--topology-dup=N` (or `--topology-repeat`).
+    fn parse_topology_group_repeat_arg() -> usize {
+        let mut args = std::env::args().skip(1);
+        while let Some(arg) = args.next() {
+            let value = if let Some(v) = arg.strip_prefix("--topology-dup=") {
+                Some(v.to_string())
+            } else if let Some(v) = arg.strip_prefix("--topology-repeat=") {
+                Some(v.to_string())
+            } else if arg == "--topology-dup" || arg == "--topology-repeat" {
+                args.next()
+            } else {
+                None
+            };
+
+            if let Some(raw) = value {
+                return raw.parse::<usize>().ok().filter(|&n| n >= 1).unwrap_or(1);
+            }
+        }
+        1
+    }
+
+    /// Build consistent window settings (icon + platform id).
+    fn main_window_settings(icon: Option<iced::window::Icon>) -> iced::window::Settings {
+        let mut settings = iced::window::Settings {
+            min_size: Some(iced::Size::new(700.0, 560.0)),
+            exit_on_close_request: false,
+            icon,
+            ..Default::default()
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            settings.platform_specific.application_id =
+                "com.sas41.processaffinitycontroltool".to_string();
+        }
+
+        settings
+    }
+
     /// Create initial state and open the main window.
     fn boot() -> (ProcessAffinityApp, Task<gui::Message>) {
         let (rgba, w, h) = load_icon_rgba();
         let icon = iced::window::icon::from_rgba(rgba, w, h).ok();
 
-        let (_, open_task) = iced::window::open(iced::window::Settings {
-            min_size: Some(iced::Size::new(700.0, 560.0)),
-            exit_on_close_request: false,
-            icon,
-            ..Default::default()
-        });
+        let (_, open_task) = iced::window::open(main_window_settings(icon));
 
-        (
-            ProcessAffinityApp::default(),
-            open_task.map(|_| gui::Message::Tick),
-        )
+        let mut app = ProcessAffinityApp::default();
+        app.topology_group_repeat = parse_topology_group_repeat_arg();
+
+        (app, open_task.map(|_| gui::Message::Tick))
     }
 
     iced::daemon(boot, update, daemon_view)

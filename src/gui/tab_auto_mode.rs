@@ -2,7 +2,7 @@
 use iced::font;
 
 use iced::widget::{
-    Column, Container, Space, button, column, container, row, scrollable, text, text_input,
+    button, column, container, row, scrollable, text, text_input, Column, Container, Space,
 };
 
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
@@ -25,11 +25,13 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
     const GREY: Color = Color::from_rgb(0.22, 0.22, 0.28);
 
+    let has_auto_mode_group = cache.groups.iter().any(|g| g.is_auto_mode_group);
+
     // Rust `if` is an expression and returns a value (like C# ternary, but block-based).
     let auto_col = if cache.is_auto_mode { GREEN } else { GREY };
 
     // Toggle sends one message; app state decides enable/disable behavior.
-    let auto_btn = button(
+    let auto_btn_base = button(
         container(
             // `row![...]` is a macro invocation (`!`) that expands to builder code.
             row![
@@ -46,15 +48,26 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
         .width(Length::Fill)
         .center_x(Length::Fill),
     )
-    .on_press(AppMessage::AutoModeMessage(Message::ToggleAutoMode))
     .width(Length::Fixed(140.0))
     .style(colored_button_style(auto_col));
 
-    let description = text(
-        "Child processes of registered launchers are automatically routed to the default group.",
-    )
-    .size(13)
-    .color(Color::from_rgb(0.65, 0.65, 0.65));
+    let auto_btn = if has_auto_mode_group {
+        auto_btn_base.on_press(AppMessage::AutoModeMessage(Message::ToggleAutoMode))
+    } else {
+        auto_btn_base
+    };
+
+    let description = if has_auto_mode_group {
+        text(
+            "Child processes of registered launchers are automatically routed to the Auto Mode group.",
+        )
+        .size(13)
+        .color(Color::from_rgb(0.65, 0.65, 0.65))
+    } else {
+        text("Auto mode requires exactly one group marked as 'Auto Mode group'.")
+            .size(13)
+            .color(Color::from_rgb(0.90, 0.72, 0.35))
+    };
 
     // Header combines the mode toggle and short behavior description.
     let header = column![auto_btn, description].spacing(8);

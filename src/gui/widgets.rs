@@ -1,5 +1,5 @@
-use iced::widget::{Column, Row, container, text};
-use iced::{Alignment, Background, Border, Color, Shadow, Vector, widget::button};
+use iced::widget::{container, text, Column, Row};
+use iced::{widget::button, Alignment, Background, Border, Color, Shadow, Vector};
 
 /// Build a reusable button style closure from one base color.
 ///

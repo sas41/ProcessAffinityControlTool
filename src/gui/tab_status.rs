@@ -1,6 +1,6 @@
 // Status tab UI.
 use iced::widget::{
-    Column, Row, Space, button, column, container, progress_bar, row, scrollable, text,
+    button, column, container, progress_bar, row, scrollable, text, Column, Row, Space,
 };
 use iced::{Alignment, Color, Element, Length};
 
@@ -24,6 +24,7 @@ pub fn view<'a>(
     cache: &'a AppCache,
     topo_view: &'a TopologyView,
     num_cores: usize,
+    topology_group_repeat: usize,
 ) -> container::Container<'a, AppMessage> {
     // Button colors encode runtime state at a glance.
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
@@ -163,42 +164,59 @@ pub fn view<'a>(
     // Precompute core -> group for fast topology coloring and badges.
     let core_group_map = build_core_group_map(&cache.groups, num_cores);
 
-    let topology_elements: Vec<Element<AppMessage>> = topo_view
-        .groups
-        .iter()
-        .enumerate()
-        // `|...|` starts a closure (lambda), similar to C# `(...) => ...`.
-        .map(|(gi, topo_group)| {
-            draw_topology_group(
+    let repeat = topology_group_repeat.max(1);
+    let rendered_group_count = topo_view.groups.len() * repeat;
+    let groups_per_row = match rendered_group_count {
+        0 => 1,
+        1..=3 => rendered_group_count,
+        4 => 2,
+        _ => 3,
+    };
+
+    let mut topology_elements: Vec<Element<AppMessage>> = Vec::new();
+    for rep in 0..repeat {
+        for (gi, topo_group) in topo_view.groups.iter().enumerate() {
+            let color_idx = rep * topo_view.groups.len() + gi;
+            topology_elements.push(draw_topology_group(
                 topo_group,
                 &cache.cpu_stats,
                 &core_group_map,
-                group_section_color(gi),
-            )
-        })
-        .collect();
+                group_section_color(color_idx),
+            ));
+        }
+    }
 
-    // Topology cards are paired per row to keep density readable
-    // on typical window widths while still stacking cleanly.
+    // Layout rules:
+    // 1-3 groups: one row
+    // 4 groups: 2x2
+    // 5-6 groups: 3 columns x 2 rows
+    // 7+ groups: 3 columns x N rows
     let topology_widget = container({
         let mut elements = topology_elements.into_iter();
-        let mut rows = Column::new().spacing(10);
+        let mut rows = Column::new().spacing(3);
 
         while let Some(first) = elements.next() {
-            let mut row = Row::new().spacing(10);
-            row = row.push(first);
-            if let Some(second) = elements.next() {
-                row = row.push(second);
+            let mut row = Row::new().spacing(3);
+            row = row.push(container(first).width(Length::FillPortion(1)));
+
+            for _ in 1..groups_per_row {
+                if let Some(next_group) = elements.next() {
+                    row = row.push(container(next_group).width(Length::FillPortion(1)));
+                } else {
+                    row = row.push(
+                        Space::new()
+                            .width(Length::FillPortion(1))
+                            .height(Length::Shrink),
+                    );
+                }
             }
+
             rows = rows.push(row);
         }
         rows
     })
     .padding(10)
-    .style(|_| iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgb(0.05, 0.05, 0.05))),
-        ..Default::default()
-    });
+    .style(|_| iced::widget::container::Style::default());
 
     let mut legend_row = Row::new().spacing(10).align_y(Alignment::Center);
 

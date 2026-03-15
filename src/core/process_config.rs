@@ -180,6 +180,10 @@ pub struct ProcessGroup {
 
     /// Skip all changes for processes in this group.
     pub is_blacklist: bool,
+
+    /// Target group for auto-mode launcher detections.
+    #[serde(default)]
+    pub is_auto_mode_group: bool,
 }
 
 /// CPU affinity as editable core list plus precomputed bitmask.
@@ -242,6 +246,7 @@ impl ProcessGroup {
             priority: None,
             is_default: false,
             is_blacklist: false,
+            is_auto_mode_group: false,
         }
     }
 }
@@ -279,5 +284,6 @@ mod tests {
         assert!(g.priority.is_none());
         assert!(!g.is_default);
         assert!(!g.is_blacklist);
+        assert!(!g.is_auto_mode_group);
     }
 }

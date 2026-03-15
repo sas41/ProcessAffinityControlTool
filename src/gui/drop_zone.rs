@@ -1,6 +1,7 @@
 use iced::advanced::{
-    Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-    widget::{Tree, tree},
+    layout, mouse, overlay, renderer,
+    widget::{tree, Tree},
+    Clipboard, Layout, Shell, Widget,
 };
 use iced::{Background, Border, Color, Element, Event, Length, Rectangle, Shadow, Size, Vector};
 

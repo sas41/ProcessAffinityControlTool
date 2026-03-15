@@ -5,6 +5,7 @@ use hwlocality::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::OnceLock;
 
 // Coarse core-class model used by UI/presets.
@@ -343,6 +344,7 @@ impl CpuTopology {
 
     // Query helpers used by presets and filtering.
 
+    #[allow(dead_code)]
     pub fn processors(&self) -> &[LogicalProcessorInfo] {
         // `&T` is a shared reference; `&[T]` is a slice view (read-only window over contiguous items).
         &self.processors
@@ -536,17 +538,42 @@ impl CpuTopology {
 // Linux-only max-frequency probe. Non-Linux builds keep zeros and rely on hwloc hints.
 
 fn read_sysfs_max_freq_khz(num_cpus: usize) -> Vec<u64> {
-    let mut result = vec![0u64; num_cpus];
     #[cfg(target_os = "linux")]
-    for i in 0..num_cpus {
-        let path = format!("/sys/devices/system/cpu/cpu{i}/cpufreq/cpuinfo_max_freq");
-        if let Ok(s) = std::fs::read_to_string(&path) {
-            if let Ok(v) = s.trim().parse::<u64>() {
-                result[i] = v;
+    {
+        fn read_khz(path: &str) -> Option<u64> {
+            let raw = std::fs::read_to_string(path).ok()?;
+            let val = raw.trim().parse::<u64>().ok()?;
+            if val == 0 {
+                return None;
             }
+            // cpufreq files are usually kHz; ACPI CPPC files may be MHz.
+            Some(if val < 20_000 { val * 1000 } else { val })
         }
+
+        let mut result = vec![0u64; num_cpus];
+
+        for (i, out) in result.iter_mut().enumerate() {
+            let candidates = [
+                format!("/sys/devices/system/cpu/cpu{i}/cpufreq/cpuinfo_max_freq"),
+                format!("/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_max_freq"),
+                format!("/sys/devices/system/cpu/cpu{i}/acpi_cppc/highest_freq"),
+                format!("/sys/devices/system/cpu/cpu{i}/acpi_cppc/nominal_freq"),
+            ];
+
+            *out = candidates
+                .iter()
+                .filter_map(|p| read_khz(p))
+                .max()
+                .unwrap_or(0);
+        }
+
+        result
     }
-    result
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        vec![0u64; num_cpus]
+    }
 }
 
 // Small formatting helpers for human-readable UI labels.
@@ -577,6 +604,83 @@ static TOPOLOGY: OnceLock<CpuTopology> = OnceLock::new();
 
 pub fn get_topology() -> &'static CpuTopology {
     TOPOLOGY.get_or_init(CpuTopology::discover)
+}
+
+/// Builds a human-readable topology report for diagnostics.
+pub fn topology_report() -> String {
+    let topo = CpuTopology::discover();
+    let view = topo.topology_view();
+    let mut out = String::new();
+
+    let _ = writeln!(&mut out, "=== Topology Report ===");
+    let _ = writeln!(&mut out, "logical processors: {}", topo.processors().len());
+    let _ = writeln!(&mut out, "top-level groups   : {}", view.groups.len());
+    let _ = writeln!(&mut out);
+
+    for (gi, group) in view.groups.iter().enumerate() {
+        let group_max_khz = group
+            .physical_cores
+            .iter()
+            .map(|c| c.max_freq_khz)
+            .max()
+            .unwrap_or(0);
+
+        let _ = writeln!(&mut out, "Group #{}: {}", gi, group.label);
+        let _ = writeln!(&mut out, "  max freq: {}", format_freq_ghz(group_max_khz));
+
+        if group.shared_caches.is_empty() {
+            let _ = writeln!(&mut out, "  shared cache: <none>");
+        } else {
+            let shared = group
+                .shared_caches
+                .iter()
+                .map(|c| format!("L{} {}", c.level, format_cache_size(c.size_bytes)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(&mut out, "  shared cache: {}", shared);
+        }
+
+        for core in &group.physical_cores {
+            let threads = core
+                .threads
+                .iter()
+                .map(|t| {
+                    format!(
+                        "T{}({})",
+                        t.logical_index,
+                        match t.kind {
+                            CoreKind::Pcore => "P",
+                            CoreKind::Ecore => "E",
+                            CoreKind::Unknown => "?",
+                        }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let private = if core.private_caches.is_empty() {
+                "<none>".to_string()
+            } else {
+                core.private_caches
+                    .iter()
+                    .map(|c| format!("L{} {}", c.level, format_cache_size(c.size_bytes)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+
+            let _ = writeln!(
+                &mut out,
+                "    C{}: freq={} threads=[{}] private=[{}]",
+                core.physical_index,
+                format_freq_ghz(core.max_freq_khz),
+                threads,
+                private
+            );
+        }
+
+        let _ = writeln!(&mut out);
+    }
+
+    out
 }
 
 // Basic invariants for discovery and formatting.

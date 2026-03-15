@@ -1,15 +1,20 @@
 // Modal editor for creating or updating a custom process rule.
 use iced::widget::{
-    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
+    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
 };
 
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
 
-use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
+use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
+use crate::gui::topology_diagram::draw_core_selector;
 
 use crate::gui::Message as AppMessage;
+
+fn custom_core_toggle_message(index: usize, checked: bool) -> AppMessage {
+    AppMessage::CustomProcessEditorMessage(Message::CoreToggled(index, checked))
+}
 
 /// Modal state for creating or editing one custom process rule.
 ///
@@ -78,6 +83,21 @@ pub enum Message {
 }
 
 impl CustomProcessEditor {
+    fn selector_len(num_cores: usize) -> usize {
+        let topo = crate::core::topology::get_topology();
+        let max_logical = topo
+            .topology_view()
+            .groups
+            .iter()
+            .flat_map(|g| g.physical_cores.iter())
+            .flat_map(|c| c.threads.iter())
+            .map(|t| t.logical_index)
+            .max()
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        num_cores.max(max_logical)
+    }
+
     /// Create editor state for a new rule or an existing rule.
     ///
     /// Existing values are copied into form fields. New rules start with all
@@ -88,7 +108,8 @@ impl CustomProcessEditor {
         let editing_name = cp.name.clone();
         let affinity_enabled = cp.affinity.is_some();
         let priority_enabled = cp.priority.is_some();
-        let mut core_checks = vec![false; num_cores];
+        let selector_len = Self::selector_len(num_cores);
+        let mut core_checks = vec![false; selector_len];
         if let Some(ref aff) = cp.affinity {
             // if let = pattern-match only the success shape; ref keeps borrowing instead of moving.
             for &c in &aff.core_list {
@@ -211,7 +232,7 @@ impl CustomProcessEditor {
     ///
     /// The core checklist is rendered as a wrapped row grid for readability,
     /// and quick-select buttons mirror topology groupings (P/E cores, CCDs).
-    pub fn view(&self) -> Element<'_, AppMessage> {
+    pub fn view(&self, topology_group_repeat: usize) -> Element<'_, AppMessage> {
         // '_ is an inferred lifetime; think "borrow valid for this returned UI tree".
         let title = if self.editing_name.is_empty() {
             "New Custom Process"
@@ -288,43 +309,13 @@ impl CustomProcessEditor {
 
                 content = content.push(quick_select);
 
-                let procs = topo.processors();
-
-                let mut grid_rows = Column::new().spacing(4);
-                let mut current_row = Row::new().spacing(6);
-                let mut items_in_row = 0;
-
-                for (i, checked) in self.core_checks.iter().enumerate() {
-                    let lbl = if let Some(p) = procs.iter().find(|p| p.logical_index == i) {
-                        match p.kind {
-                            crate::core::topology::CoreKind::Pcore => format!("P{}", i),
-                            crate::core::topology::CoreKind::Ecore => format!("E{}", i),
-                            _ => format!("{}", i),
-                        }
-                    } else {
-                        format!("{}", i)
-                    };
-
-                    let cb = checkbox(*checked).label(lbl).on_toggle(move |c| {
-                        // move captures i by value into the closure (like closing over a copied local).
-                        AppMessage::CustomProcessEditorMessage(Message::CoreToggled(i, c))
-                    });
-
-                    current_row = current_row.push(cb);
-                    items_in_row += 1;
-
-                    if items_in_row >= 8 {
-                        grid_rows = grid_rows.push(current_row);
-                        current_row = Row::new().spacing(6);
-                        items_in_row = 0;
-                    }
-                }
-
-                if items_in_row > 0 {
-                    grid_rows = grid_rows.push(current_row);
-                }
-
-                content = content.push(grid_rows);
+                let topo_view = topo.topology_view();
+                content = content.push(draw_core_selector(
+                    &topo_view,
+                    &self.core_checks,
+                    topology_group_repeat,
+                    custom_core_toggle_message,
+                ));
             }
 
             content
@@ -379,18 +370,26 @@ impl CustomProcessEditor {
         let name_ok = !self.name.trim().is_empty();
         let affinity_ok = !self.affinity_enabled || self.core_checks.iter().any(|&c| c);
 
+        let ok_button = {
+            let btn = button("OK").style(move |_, _| button::Style {
+                background: Some(Background::Color(if name_ok && affinity_ok {
+                    Color::from_rgb(0.2, 0.4, 0.8)
+                } else {
+                    Color::from_rgb(0.3, 0.3, 0.3)
+                })),
+                text_color: Color::WHITE,
+                ..Default::default()
+            });
+
+            if name_ok && affinity_ok {
+                btn.on_press(AppMessage::CustomProcessEditorMessage(Message::Ok))
+            } else {
+                btn
+            }
+        };
+
         let actions_row = row![
-            button("OK")
-                .on_press(AppMessage::CustomProcessEditorMessage(Message::Ok))
-                .style(move |_, _| button::Style {
-                    background: Some(Background::Color(if name_ok && affinity_ok {
-                        Color::from_rgb(0.2, 0.4, 0.8)
-                    } else {
-                        Color::from_rgb(0.3, 0.3, 0.3)
-                    })),
-                    text_color: Color::WHITE,
-                    ..Default::default()
-                }),
+            ok_button,
             button("Cancel").on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
         ]
         .spacing(10);
@@ -417,7 +416,7 @@ impl CustomProcessEditor {
         .padding(20);
 
         let dialog = container(scrollable(content).height(Length::Shrink))
-            .max_width(520)
+            .max_width(860)
             .style(|_| iced::widget::container::Style {
                 background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
                 border: Border {

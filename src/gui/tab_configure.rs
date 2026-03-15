@@ -8,10 +8,11 @@
 use iced::font;
 use iced::widget::container::Style as ContainerStyle;
 use iced::widget::{
-    Column, Container, Row, Space, button, column, container, row, scrollable, text, text_input,
+    button, column, container, row, scrollable, text, text_input, Column, Container, Row, Space,
 };
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
 
+use crate::core::process_config::ProcessGroup;
 use crate::gui::draggable_pill::DraggablePill;
 use crate::gui::drop_zone::DropZone;
 use crate::gui::widgets::{icon_button_content, process_pill};
@@ -19,6 +20,58 @@ use crate::gui::{AppCache, Message as AppMessage};
 
 /// Maximum number of group cards in each grid row.
 const CARDS_PER_ROW: usize = 4;
+
+fn group_flag_icon(
+    glyph: iced::widget::Text<'static>,
+    color: Color,
+) -> Container<'static, AppMessage> {
+    container(glyph.size(12).color(color))
+        .width(16)
+        .height(16)
+        .center_x(16)
+        .center_y(16)
+}
+
+fn group_flag_row(g: &ProcessGroup) -> Row<'static, AppMessage> {
+    let mut flags = Row::new().spacing(4).align_y(Alignment::Center);
+
+    if g.is_default {
+        flags = flags.push(group_flag_icon(
+            iced_fonts::bootstrap::award_fill(),
+            Color::from_rgb(0.43, 0.73, 1.0),
+        ));
+    }
+
+    if g.is_auto_mode_group {
+        flags = flags.push(group_flag_icon(
+            iced_fonts::bootstrap::lightning_charge_fill(),
+            Color::from_rgb(0.99, 0.85, 0.24),
+        ));
+    }
+
+    if g.is_blacklist {
+        flags = flags.push(group_flag_icon(
+            iced_fonts::bootstrap::slash_circle_fill(),
+            Color::from_rgb(1.0, 0.45, 0.45),
+        ));
+    }
+
+    if g.affinity.is_some() {
+        flags = flags.push(group_flag_icon(
+            iced_fonts::bootstrap::cpu_fill(),
+            Color::from_rgb(0.55, 0.94, 0.72),
+        ));
+    }
+
+    if g.priority.is_some() {
+        flags = flags.push(group_flag_icon(
+            iced_fonts::bootstrap::stars(),
+            Color::from_rgb(0.92, 0.68, 1.0),
+        ));
+    }
+
+    flags
+}
 
 /// User intents emitted by controls inside the Configure tab.
 ///
@@ -137,10 +190,15 @@ pub fn view<'a>(
             let procs: Vec<String> = by_group.get(&gname_lower).cloned().unwrap_or_default();
 
             let header = row![
-                text(gname.clone()).size(14).font(Font {
-                    weight: font::Weight::Bold,
-                    ..Default::default()
-                }),
+                row![
+                    text(gname.clone()).size(14).font(Font {
+                        weight: font::Weight::Bold,
+                        ..Default::default()
+                    }),
+                    group_flag_row(g),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
                 Space::new().width(Length::Fill),
                 button(icon_button_content(iced_fonts::bootstrap::three_dots()))
                     .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(
