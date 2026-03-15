@@ -1,6 +1,6 @@
 use iced::font;
 use iced::widget::{
-    Column, Container, Space, button, column, container, row, scrollable, text, text_input,
+    button, column, container, row, scrollable, text, text_input, Column, Container, Space,
 };
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
 

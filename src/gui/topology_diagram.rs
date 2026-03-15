@@ -71,7 +71,7 @@ pub fn build_core_group_map(groups: &[ProcessGroup], num_cores: usize) -> Vec<Op
     map
 }
 
-use iced::widget::{Column, Row, column, container, row, text};
+use iced::widget::{column, container, row, text, Column, Row};
 use iced::{Alignment, Background, Element, Length};
 
 use crate::gui::Message;
@@ -133,11 +133,9 @@ pub fn draw_topology_group<'a>(
             // Physical core container
             container(
                 column![
-                    row![
-                        text(format!("C{}", phys_core.physical_index))
-                            .size(10)
-                            .color(Color::from_rgb(0.7, 0.7, 0.7))
-                    ]
+                    row![text(format!("C{}", phys_core.physical_index))
+                        .size(10)
+                        .color(Color::from_rgb(0.7, 0.7, 0.7))]
                     .align_y(Alignment::Center),
                     thread_bars
                 ]

@@ -1,5 +1,5 @@
-use iced::widget::{Column, Row, container, text};
-use iced::{Shadow, Vector, widget::button};
+use iced::widget::{container, text, Column, Row};
+use iced::{widget::button, Shadow, Vector};
 
 /// Coloured button style with distinct hover (brightens) and press (darkens + shadow) states.
 /// Pass the base background colour; text is always white.

@@ -1,5 +1,5 @@
 use iced::font;
-use iced::widget::{Row, Space, button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, row, text, text_input, Row, Space};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 
 use crate::gui::Message as AppMessage;

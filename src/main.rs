@@ -13,7 +13,6 @@ const ICON_PNG: &[u8] = include_bytes!("../assets/icon/PACT Logo.png");
 
 /// Decode the PNG icon to raw RGBA bytes once.
 fn load_icon_rgba() -> (Vec<u8>, u32, u32) {
-    use image::GenericImageView;
     let img = image::load_from_memory(ICON_PNG)
         .expect("Failed to load PACT icon")
         .to_rgba8();
@@ -25,7 +24,7 @@ fn load_icon_rgba() -> (Vec<u8>, u32, u32) {
 
 /// Holds the live tray icon and the IDs of its context-menu items so we can
 /// identify which item was clicked without allocating new strings each poll.
-struct TrayState {
+pub(crate) struct TrayState {
     _icon: tray_icon::TrayIcon,
     show_id: tray_icon::menu::MenuId,
     quit_id: tray_icon::menu::MenuId,
@@ -42,7 +41,6 @@ fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
     let icon = {
         let icon_path = std::path::Path::new("/tmp/pact-tray-icon.png");
         // Write a 32×32 downscaled version to /tmp for the panel icon.
-        use image::GenericImageView;
         let img = image::RgbaImage::from_raw(width, height, rgba.to_vec())
             .and_then(|i| Some(image::DynamicImage::ImageRgba8(i)));
         if let Some(img) = img {
@@ -87,7 +85,6 @@ fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
 }
 
 use core::topology::TopologyView;
-use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -95,6 +92,7 @@ use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
+use gui::AppCache;
 
 // ─── Application state ────────────────────────────────────────────────────────
 
@@ -120,7 +118,7 @@ pub struct ProcessAffinityApp {
     /// Raw RGBA bytes for the app icon, used to (re)create the tray icon.
     pub icon_rgba: (Vec<u8>, u32, u32),
     /// Live tray icon; `None` when minimize-to-tray is disabled.
-    pub tray_state: Option<TrayState>,
+    pub(crate) tray_state: Option<TrayState>,
 }
 
 impl Default for ProcessAffinityApp {

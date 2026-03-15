@@ -1,11 +1,11 @@
 use iced::widget::{
-    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
+    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, ProcessGroup};
+use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
 use crate::gui::Message as AppMessage;
-use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
 
 // ─── ProcessGroup default constructor ────────────────────────────────────────
 
