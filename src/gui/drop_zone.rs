@@ -1,8 +1,8 @@
 use iced::advanced::{
+    Clipboard, Layout, Shell, Widget,
     graphics::core::event,
     layout, mouse, overlay, renderer,
-    widget::{tree, Tree},
-    Clipboard, Layout, Shell, Widget,
+    widget::{Tree, tree},
 };
 use iced::{Background, Border, Color, Element, Event, Length, Rectangle, Shadow, Size, Vector};
 
@@ -206,8 +206,12 @@ where
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
-        self.content
-            .as_widget_mut()
-            .overlay(&mut tree.children[0], layout, renderer, viewport, translation)
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
     }
 }

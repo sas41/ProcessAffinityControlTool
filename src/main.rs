@@ -85,6 +85,7 @@ fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
 }
 
 use core::topology::TopologyView;
+use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -92,7 +93,6 @@ use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
-use gui::AppCache;
 
 // ─── Application state ────────────────────────────────────────────────────────
 
@@ -408,15 +408,7 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
             app.dragging_process = None;
         }
         gui::Message::CloseRequested => {
-            // Always minimize to tray (this is now the default behavior that cannot be turned off)
-            // Minimize first (signals the compositor), then hide the surface
-            // so the window disappears from both view and the taskbar.
-            return iced::window::latest().and_then(|id| {
-                Task::batch([
-                    iced::window::minimize(id, true),
-                    iced::window::set_mode(id, iced::window::Mode::Hidden),
-                ])
-            });
+            return iced::window::latest().and_then(iced::window::close);
         }
         gui::Message::PollTrayEvents => {
             // Drive the GTK main loop on Linux so tray/menu events are dispatched.
@@ -439,20 +431,40 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                             ..
                         }
                     ) {
-                        return iced::window::latest().and_then(|id| {
-                            iced::window::set_mode(id, iced::window::Mode::Windowed)
+                        let icon = iced::window::icon::from_rgba(
+                            app.icon_rgba.0.clone(),
+                            app.icon_rgba.1,
+                            app.icon_rgba.2,
+                        )
+                        .ok();
+                        let (_, open_task) = iced::window::open(iced::window::Settings {
+                            min_size: Some(iced::Size::new(700.0, 560.0)),
+                            exit_on_close_request: false,
+                            icon,
+                            ..Default::default()
                         });
+                        return open_task.map(|_| gui::Message::Tick);
                     }
                 }
                 // Context-menu items (Linux / all platforms).
                 if let Ok(ev) = tray_icon::menu::MenuEvent::receiver().try_recv() {
                     if ev.id == tray.show_id {
-                        return iced::window::latest().and_then(|id| {
-                            iced::window::set_mode(id, iced::window::Mode::Windowed)
+                        let icon = iced::window::icon::from_rgba(
+                            app.icon_rgba.0.clone(),
+                            app.icon_rgba.1,
+                            app.icon_rgba.2,
+                        )
+                        .ok();
+                        let (_, open_task) = iced::window::open(iced::window::Settings {
+                            min_size: Some(iced::Size::new(700.0, 560.0)),
+                            exit_on_close_request: false,
+                            icon,
+                            ..Default::default()
                         });
+                        return open_task.map(|_| gui::Message::Tick);
                     } else if ev.id == tray.quit_id {
                         app.pact.stop_scan_handler();
-                        return iced::window::latest().and_then(iced::window::close);
+                        return iced::exit();
                     }
                 }
             }
@@ -604,19 +616,33 @@ fn main() -> iced::Result {
     };
 
     let (rgba, w, h) = load_icon_rgba();
-    let window_icon = iced::window::icon::from_rgba(rgba, w, h).ok();
+    let icon = iced::window::icon::from_rgba(rgba, w, h).ok();
 
-    iced::application(ProcessAffinityApp::default, update, view)
-        .title("Process Affinity Control Tool")
+    fn daemon_view<'a>(
+        app: &'a ProcessAffinityApp,
+        _id: iced::window::Id,
+    ) -> Element<'a, gui::Message> {
+        view(app)
+    }
+
+    fn boot() -> (ProcessAffinityApp, Task<gui::Message>) {
+        let (rgba, w, h) = load_icon_rgba();
+        let icon = iced::window::icon::from_rgba(rgba, w, h).ok();
+        let (_, open_task) = iced::window::open(iced::window::Settings {
+            min_size: Some(iced::Size::new(700.0, 560.0)),
+            exit_on_close_request: false,
+            icon,
+            ..Default::default()
+        });
+        (
+            ProcessAffinityApp::default(),
+            open_task.map(|_| gui::Message::Tick),
+        )
+    }
+
+    iced::daemon(boot, update, daemon_view)
         .settings(settings)
         .subscription(subscription)
         .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
-        .window(iced::window::Settings {
-            min_size: Some(iced::Size::new(700.0, 560.0)),
-            // Handle close manually so minimize-to-tray can intercept it.
-            exit_on_close_request: false,
-            icon: window_icon,
-            ..Default::default()
-        })
         .run()
 }

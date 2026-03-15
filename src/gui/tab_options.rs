@@ -1,10 +1,10 @@
 use iced::font;
 use iced::widget::{
-    button, column, container, row, scrollable, slider, text, Column, Container, Space,
+    Column, Container, Space, button, column, container, row, scrollable, slider, text,
 };
 use iced::{Alignment, Background, Color, Font, Length};
 
-use crate::gui::priority::{priority_to_index, PRIORITY_LABELS};
+use crate::gui::priority::{PRIORITY_LABELS, priority_to_index};
 use crate::gui::topology_diagram::group_color;
 use crate::gui::{AppCache, Message as AppMessage};
 

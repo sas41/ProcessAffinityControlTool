@@ -1,11 +1,11 @@
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
+    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, ProcessGroup};
-use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
 use crate::gui::Message as AppMessage;
+use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
 
 // ─── ProcessGroup default constructor ────────────────────────────────────────
 
@@ -223,17 +223,20 @@ impl GroupEditor {
 
         // Flags
         let flags_row = row![
-            checkbox(self.is_default).label("Default group")
+            checkbox(self.is_default)
+                .label("Default group")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleDefault)),
             Space::new().width(12.0),
-            checkbox(self.is_blacklist).label("Blacklist")
+            checkbox(self.is_blacklist)
+                .label("Blacklist")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleBlacklist)),
         ]
         .spacing(10);
 
         // Affinity section
         let affinity_section = {
-            let toggle = checkbox(self.affinity_enabled).label("Set CPU affinity")
+            let toggle = checkbox(self.affinity_enabled)
+                .label("Set CPU affinity")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAffinity));
 
             let mut content = Column::new().spacing(10).push(toggle);
@@ -316,7 +319,8 @@ impl GroupEditor {
 
         // Priority section
         let priority_section = {
-            let toggle = checkbox(self.priority_enabled).label("Set priority")
+            let toggle = checkbox(self.priority_enabled)
+                .label("Set priority")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::TogglePriority));
 
             let mut content = Column::new().spacing(10).push(toggle);

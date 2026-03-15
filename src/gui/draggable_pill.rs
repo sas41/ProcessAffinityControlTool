@@ -1,8 +1,8 @@
 use iced::advanced::{
+    Clipboard, Layout, Shell, Widget,
     graphics::core::event,
     layout, mouse, overlay, renderer,
-    widget::{tree, Tree},
-    Clipboard, Layout, Shell, Widget,
+    widget::{Tree, tree},
 };
 use iced::{
     Background, Border, Color, Element, Event, Length, Point, Rectangle, Shadow, Size, Vector,
@@ -314,8 +314,12 @@ where
         }
 
         // Not dragging — delegate to inner content's overlay (e.g. dropdowns).
-        self.content
-            .as_widget_mut()
-            .overlay(&mut tree.children[0], layout, renderer, viewport, translation)
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
     }
 }
