@@ -70,7 +70,6 @@ pub enum Message {
     /// Polls tray icon and menu events at ~250 ms intervals.
     PollTrayEvents,
 
-
     Tick, // periodic refresh of cached display data
 
     GroupEditorMessage(group_editor::Message),

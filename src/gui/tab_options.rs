@@ -1,10 +1,10 @@
+use iced::font;
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, slider, text, Column, Container, Space,
+    Column, Container, Space, button, checkbox, column, container, row, scrollable, slider, text,
 };
 use iced::{Alignment, Background, Color, Font, Length};
-use iced::font;
 
-use crate::gui::priority::{priority_to_index, PRIORITY_LABELS};
+use crate::gui::priority::{PRIORITY_LABELS, priority_to_index};
 use crate::gui::topology_diagram::group_color;
 use crate::gui::{AppCache, Message as AppMessage};
 
@@ -75,11 +75,38 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     };
 
     let header_row = row![
-        text("Name").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(130.0)),
-        text("Affinity").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(80.0)),
-        text("Priority").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(80.0)),
-        text("Flags").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(80.0)),
-        text("Processes").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }),
+        text("Name")
+            .size(13)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Default::default()
+            })
+            .width(Length::Fixed(130.0)),
+        text("Affinity")
+            .size(13)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Default::default()
+            })
+            .width(Length::Fixed(80.0)),
+        text("Priority")
+            .size(13)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Default::default()
+            })
+            .width(Length::Fixed(80.0)),
+        text("Flags")
+            .size(13)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Default::default()
+            })
+            .width(Length::Fixed(80.0)),
+        text("Processes").size(13).font(Font {
+            weight: font::Weight::Bold,
+            ..Default::default()
+        }),
     ]
     .spacing(0);
 
@@ -90,40 +117,60 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
         *proc_counts.entry(grp.to_lowercase()).or_default() += 1;
     }
 
-    let group_rows = cache
-        .groups
-        .iter()
-        .enumerate()
-        .fold(Column::new().spacing(4), |col, (gi, g)| {
-            let affinity_str = match &g.affinity {
-                Some(aff) => format!("{} cores", aff.core_list.len()),
-                None => "ignore".to_string(),
-            };
-            let priority_str = match &g.priority {
-                Some(p) => PRIORITY_LABELS[priority_to_index(p)].to_string(),
-                None => "ignore".to_string(),
-            };
-            let flags_str = if g.is_default {
-                "default".to_string()
-            } else if g.is_blacklist {
-                "blacklist".to_string()
-            } else {
-                "-".to_string()
-            };
-            let proc_count = proc_counts.get(&g.name.to_lowercase()).copied().unwrap_or(0);
-            let gc = group_color(gi);
+    let group_rows =
+        cache
+            .groups
+            .iter()
+            .enumerate()
+            .fold(Column::new().spacing(4), |col, (gi, g)| {
+                let affinity_str = match &g.affinity {
+                    Some(aff) => format!("{} cores", aff.core_list.len()),
+                    None => "ignore".to_string(),
+                };
+                let priority_str = match &g.priority {
+                    Some(p) => PRIORITY_LABELS[priority_to_index(p)].to_string(),
+                    None => "ignore".to_string(),
+                };
+                let flags_str = if g.is_default {
+                    "default".to_string()
+                } else if g.is_blacklist {
+                    "blacklist".to_string()
+                } else {
+                    "-".to_string()
+                };
+                let proc_count = proc_counts
+                    .get(&g.name.to_lowercase())
+                    .copied()
+                    .unwrap_or(0);
+                let gc = group_color(gi);
 
-            col.push(
-                row![
-                    text(g.name.clone()).size(13).color(gc).width(Length::Fixed(130.0)),
-                    text(affinity_str).size(13).font(italic).color(Color::from_rgb(0.65, 0.65, 0.65)).width(Length::Fixed(80.0)),
-                    text(priority_str).size(13).font(italic).color(Color::from_rgb(0.65, 0.65, 0.65)).width(Length::Fixed(80.0)),
-                    text(flags_str).size(13).color(Color::from_rgb(0.65, 0.65, 0.65)).width(Length::Fixed(80.0)),
-                    text(proc_count.to_string()).size(13).color(Color::from_rgb(0.65, 0.65, 0.65)),
-                ]
-                .spacing(0),
-            )
-        });
+                col.push(
+                    row![
+                        text(g.name.clone())
+                            .size(13)
+                            .color(gc)
+                            .width(Length::Fixed(130.0)),
+                        text(affinity_str)
+                            .size(13)
+                            .font(italic)
+                            .color(Color::from_rgb(0.65, 0.65, 0.65))
+                            .width(Length::Fixed(80.0)),
+                        text(priority_str)
+                            .size(13)
+                            .font(italic)
+                            .color(Color::from_rgb(0.65, 0.65, 0.65))
+                            .width(Length::Fixed(80.0)),
+                        text(flags_str)
+                            .size(13)
+                            .color(Color::from_rgb(0.65, 0.65, 0.65))
+                            .width(Length::Fixed(80.0)),
+                        text(proc_count.to_string())
+                            .size(13)
+                            .color(Color::from_rgb(0.65, 0.65, 0.65)),
+                    ]
+                    .spacing(0),
+                )
+            });
 
     let groups_section = column![
         text("Groups overview").size(16).font(Font {
@@ -144,8 +191,8 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
             })
     };
 
-    let github_btn = button(text("GitHub").size(13))
-        .on_press(AppMessage::OptionsMessage(Message::OpenGitHub));
+    let github_btn =
+        button(text("GitHub").size(13)).on_press(AppMessage::OptionsMessage(Message::OpenGitHub));
 
     let behavior_section = column![
         text("Behavior").size(16).font(Font {

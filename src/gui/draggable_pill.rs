@@ -1,10 +1,12 @@
 use iced::advanced::{
+    Clipboard, Layout, Shell, Widget,
     graphics::core::event,
     layout, mouse, overlay, renderer,
-    widget::{tree, Tree},
-    Clipboard, Layout, Shell, Widget,
+    widget::{Tree, tree},
 };
-use iced::{Background, Border, Color, Element, Event, Length, Point, Rectangle, Shadow, Size, Vector};
+use iced::{
+    Background, Border, Color, Element, Event, Length, Point, Rectangle, Shadow, Size, Vector,
+};
 
 const DRAG_DEADBAND: f32 = 10.0;
 
@@ -30,8 +32,8 @@ struct GhostOverlay {
     grab_offset: Vector, // cursor - pill.top_left at the moment of press
 }
 
-impl<Message, Theme, Renderer: iced::advanced::Renderer>
-    overlay::Overlay<Message, Theme, Renderer> for GhostOverlay
+impl<Message, Theme, Renderer: iced::advanced::Renderer> overlay::Overlay<Message, Theme, Renderer>
+    for GhostOverlay
 {
     fn layout(&mut self, _renderer: &Renderer, _bounds: Size) -> layout::Node {
         let top_left = self.cursor - self.grab_offset;

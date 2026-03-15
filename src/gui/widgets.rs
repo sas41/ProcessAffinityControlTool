@@ -1,4 +1,4 @@
-use iced::widget::{container, text, Column, Row};
+use iced::widget::{Column, Row, container, text};
 use iced::{Shadow, Vector, widget::button};
 
 /// Coloured button style with distinct hover (brightens) and press (darkens + shadow) states.
@@ -16,22 +16,24 @@ pub fn colored_button_style(
                 (base.b * 1.25).min(1.0),
                 1.0,
             ),
-            button::Status::Pressed => iced::Color::from_rgba(
-                base.r * 0.60,
-                base.g * 0.60,
-                base.b * 0.60,
-                1.0,
-            ),
-            button::Status::Disabled => {
-                iced::Color::from_rgba(base.r, base.g, base.b, 0.4)
+            button::Status::Pressed => {
+                iced::Color::from_rgba(base.r * 0.60, base.g * 0.60, base.b * 0.60, 1.0)
             }
+            button::Status::Disabled => iced::Color::from_rgba(base.r, base.g, base.b, 0.4),
         };
         button::Style {
             background: Some(Background::Color(bg)),
             text_color: iced::Color::WHITE,
-            border: Border { radius: 4.0.into(), ..Default::default() },
+            border: Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
             shadow: if matches!(status, button::Status::Pressed) {
-                Shadow { color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6), offset: Vector::new(0.0, 2.0), blur_radius: 4.0 }
+                Shadow {
+                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6),
+                    offset: Vector::new(0.0, 2.0),
+                    blur_radius: 4.0,
+                }
             } else {
                 Shadow::default()
             },
@@ -47,7 +49,9 @@ pub fn icon(glyph: iced_fonts::Bootstrap) -> iced::widget::Text<'static> {
 }
 
 /// Render a Bootstrap icon glyph at the given size, centered in a fixed square.
-pub fn icon_button_content(glyph: iced_fonts::Bootstrap) -> container::Container<'static, crate::gui::Message> {
+pub fn icon_button_content(
+    glyph: iced_fonts::Bootstrap,
+) -> container::Container<'static, crate::gui::Message> {
     container(
         text(char::from(glyph).to_string())
             .font(iced_fonts::BOOTSTRAP_FONT)
@@ -62,7 +66,10 @@ use iced::{Alignment, Background, Border, Color};
 
 /// Compact pill showing a process name with a bordered pill shape.
 /// Dimmed when the process is not currently running.
-pub fn process_pill<Message>(name: String, is_running: bool) -> container::Container<'static, Message> {
+pub fn process_pill<Message>(
+    name: String,
+    is_running: bool,
+) -> container::Container<'static, Message> {
     let (text_col, border_col, bg_col) = if is_running {
         (
             Color::from_rgb(0.86, 0.86, 0.86),
@@ -89,7 +96,6 @@ pub fn process_pill<Message>(name: String, is_running: bool) -> container::Conta
             ..Default::default()
         })
 }
-
 
 /// Numeric stat badge: large coloured number on top, small label below.
 /// Used in the Status tab header row.

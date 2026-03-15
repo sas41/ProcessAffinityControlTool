@@ -32,8 +32,8 @@ struct TrayState {
 }
 
 fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
-    use tray_icon::{TrayIconBuilder, Icon};
     use tray_icon::menu::{Menu, MenuItem};
+    use tray_icon::{Icon, TrayIconBuilder};
 
     // On Linux, appindicator looks up icons by name (no path, no extension) inside
     // an icon-theme directory.  Write the PNG to /tmp with a fixed simple name so
@@ -79,7 +79,11 @@ fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
 
     let tray = builder.build().ok()?;
 
-    Some(TrayState { _icon: tray, show_id, quit_id })
+    Some(TrayState {
+        _icon: tray,
+        show_id,
+        quit_id,
+    })
 }
 
 use core::topology::TopologyView;
@@ -126,7 +130,10 @@ impl Default for ProcessAffinityApp {
         let cache = build_cache(&pact);
         let topo_view = core::topology::get_topology().topology_view();
         let icon_rgba = load_icon_rgba();
-        let minimize_to_tray = pact.pact_process_overwatch.user_config_lock().minimize_to_tray;
+        let minimize_to_tray = pact
+            .pact_process_overwatch
+            .user_config_lock()
+            .minimize_to_tray;
         let tray_state = if minimize_to_tray {
             create_tray(&icon_rgba.0, icon_rgba.1, icon_rgba.2)
         } else {
@@ -166,7 +173,10 @@ fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
         launchers: pact.get_auto_mode_launchers(),
         detections: pact.get_auto_mode_detections(),
         scan_interval: pact.pact_process_overwatch.scan_interval(),
-        minimize_to_tray: pact.pact_process_overwatch.user_config_lock().minimize_to_tray,
+        minimize_to_tray: pact
+            .pact_process_overwatch
+            .user_config_lock()
+            .minimize_to_tray,
     }
 }
 
@@ -359,11 +369,8 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                     );
                     // Create or drop the tray icon accordingly.
                     if enabled && app.tray_state.is_none() {
-                        app.tray_state = create_tray(
-                            &app.icon_rgba.0,
-                            app.icon_rgba.1,
-                            app.icon_rgba.2,
-                        );
+                        app.tray_state =
+                            create_tray(&app.icon_rgba.0, app.icon_rgba.1, app.icon_rgba.2);
                     } else if !enabled {
                         app.tray_state = None;
                     }

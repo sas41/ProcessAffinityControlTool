@@ -1,8 +1,6 @@
-use iced::widget::{
-    button, column, container, row, text, text_input, Row, Space,
-};
-use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 use iced::font;
+use iced::widget::{Row, Space, button, column, container, row, text, text_input};
+use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 
 use crate::gui::Message as AppMessage;
 
@@ -120,35 +118,37 @@ impl ProcessEditor {
         .align_y(Alignment::Center);
 
         // ── Group selection ───────────────────────────────────────────────────
-        let group_buttons = self
-            .available_groups
-            .iter()
-            .cloned()
-            .fold(Row::new().spacing(6), |row, gname| {
-                let is_selected = gname == self.selected_group;
-                row.push(
-                    button(text(gname.clone()).size(12))
-                        .on_press(AppMessage::ProcessEditorMessage(Message::GroupSelected(
-                            gname,
-                        )))
-                        .style(move |_, _| button::Style {
-                            background: Some(Background::Color(if is_selected {
-                                Color::from_rgb(0.2, 0.4, 0.8)
-                            } else {
-                                Color::from_rgb(0.22, 0.22, 0.22)
-                            })),
-                            text_color: Color::WHITE,
-                            border: Border {
-                                radius: 4.0.into(),
+        let group_buttons =
+            self.available_groups
+                .iter()
+                .cloned()
+                .fold(Row::new().spacing(6), |row, gname| {
+                    let is_selected = gname == self.selected_group;
+                    row.push(
+                        button(text(gname.clone()).size(12))
+                            .on_press(AppMessage::ProcessEditorMessage(Message::GroupSelected(
+                                gname,
+                            )))
+                            .style(move |_, _| button::Style {
+                                background: Some(Background::Color(if is_selected {
+                                    Color::from_rgb(0.2, 0.4, 0.8)
+                                } else {
+                                    Color::from_rgb(0.22, 0.22, 0.22)
+                                })),
+                                text_color: Color::WHITE,
+                                border: Border {
+                                    radius: 4.0.into(),
+                                    ..Default::default()
+                                },
                                 ..Default::default()
-                            },
-                            ..Default::default()
-                        }),
-                )
-            });
+                            }),
+                    )
+                });
 
         let group_section = column![
-            text("Assign to group:").size(13).color(Color::from_rgb(0.7, 0.7, 0.7)),
+            text("Assign to group:")
+                .size(13)
+                .color(Color::from_rgb(0.7, 0.7, 0.7)),
             group_buttons,
         ]
         .spacing(6);
@@ -172,8 +172,8 @@ impl ProcessEditor {
                 ..Default::default()
             });
 
-        let cancel_btn =
-            button(text("Cancel").size(13)).on_press(AppMessage::ProcessEditorMessage(Message::Cancel));
+        let cancel_btn = button(text("Cancel").size(13))
+            .on_press(AppMessage::ProcessEditorMessage(Message::Cancel));
 
         let left_actions = row![ok_btn, cancel_btn].spacing(8);
 
@@ -211,17 +211,18 @@ impl ProcessEditor {
         .spacing(16)
         .padding(20);
 
-        let dialog = container(dialog_content)
-            .max_width(440)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
-                border: Border {
-                    color: Color::from_rgb(0.38, 0.38, 0.38),
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                ..Default::default()
-            });
+        let dialog =
+            container(dialog_content)
+                .max_width(440)
+                .style(|_| iced::widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
+                    border: Border {
+                        color: Color::from_rgb(0.38, 0.38, 0.38),
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    ..Default::default()
+                });
 
         // Full-screen dimmed backdrop with dialog centred inside
         container(dialog)

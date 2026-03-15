@@ -1,7 +1,7 @@
 use iced::font;
 use iced::widget::container::Style as ContainerStyle;
 use iced::widget::{
-    button, column, container, row, scrollable, text, text_input, Column, Container, Row, Space,
+    Column, Container, Row, Space, button, column, container, row, scrollable, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
 
@@ -45,7 +45,11 @@ fn card_style() -> ContainerStyle {
     }
 }
 
-pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: &'a str) -> Container<'a, AppMessage> {
+pub fn view<'a>(
+    cache: &'a AppCache,
+    dragging: Option<&'a str>,
+    process_filter: &'a str,
+) -> Container<'a, AppMessage> {
     let running_set: std::collections::HashSet<String> =
         cache.running.iter().map(|s| s.to_lowercase()).collect();
     let assigned_names: std::collections::HashSet<String> = cache
@@ -58,7 +62,10 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
     let mut by_group: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     for (proc, grp) in &cache.assigned {
-        by_group.entry(grp.to_lowercase()).or_default().push(proc.clone());
+        by_group
+            .entry(grp.to_lowercase())
+            .or_default()
+            .push(proc.clone());
     }
 
     let dropping = dragging.map(|s| s.to_string());
@@ -73,7 +80,9 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
         {
             let btn = button(text("Add Process").size(13)).padding([5, 10]);
             if has_groups {
-                btn.on_press(AppMessage::ConfigureMessage(Message::OpenProcessEditorGlobal))
+                btn.on_press(AppMessage::ConfigureMessage(
+                    Message::OpenProcessEditorGlobal,
+                ))
             } else {
                 btn
             }
@@ -103,23 +112,30 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
                 }),
                 Space::with_width(Length::Fill),
                 button(icon_button_content(iced_fonts::Bootstrap::ThreeDots))
-                    .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(Some(
-                        gname.clone(),
-                    ))))
+                    .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(
+                        Some(gname.clone(),)
+                    )))
                     .padding(0),
             ]
             .align_y(Alignment::Center)
             .spacing(4)
             .width(Length::Fill);
 
-            let pill_list = procs
-                .into_iter()
-                .fold(Column::new().spacing(2).padding(Padding { right: 14.0, ..Default::default() }), |col, pname| {
+            let pill_list = procs.into_iter().fold(
+                Column::new().spacing(2).padding(Padding {
+                    right: 14.0,
+                    ..Default::default()
+                }),
+                |col, pname| {
                     let is_running = running_set.contains(&pname.to_lowercase());
                     let drag_msg =
                         AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
-                    col.push(DraggablePill::new(process_pill(pname, is_running), drag_msg))
-                });
+                    col.push(DraggablePill::new(
+                        process_pill(pname, is_running),
+                        drag_msg,
+                    ))
+                },
+            );
 
             let card = container(
                 column![
@@ -130,7 +146,9 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
                             background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
                             ..Default::default()
                         }),
-                    scrollable(pill_list).width(Length::Fill).height(Length::Fixed(120.0)),
+                    scrollable(pill_list)
+                        .width(Length::Fill)
+                        .height(Length::Fixed(120.0)),
                 ]
                 .spacing(6)
                 .padding(8),
@@ -197,15 +215,16 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
                     background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
                     ..Default::default()
                 }),
-            scrollable(
-                unassigned
-                    .into_iter()
-                    .fold(Column::new().spacing(2).padding(Padding { right: 14.0, ..Default::default() }), |col, pname| {
-                        let msg =
-                            AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
-                        col.push(DraggablePill::new(process_pill(pname, true), msg))
-                    })
-            )
+            scrollable(unassigned.into_iter().fold(
+                Column::new().spacing(2).padding(Padding {
+                    right: 14.0,
+                    ..Default::default()
+                }),
+                |col, pname| {
+                    let msg = AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
+                    col.push(DraggablePill::new(process_pill(pname, true), msg))
+                }
+            ))
             .width(Length::Fill)
             .height(Length::Fill),
         ]
@@ -237,9 +256,8 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
         .fold(Column::new().spacing(3), |col, cp| {
             let name = cp.name.clone();
             let drag_msg = AppMessage::ConfigureMessage(Message::DragStarted(name.clone()));
-            let edit_msg = AppMessage::ConfigureMessage(
-                Message::OpenCustomProcessEditor(Some(name.clone())),
-            );
+            let edit_msg =
+                AppMessage::ConfigureMessage(Message::OpenCustomProcessEditor(Some(name.clone())));
             col.push(
                 row![
                     DraggablePill::new(process_pill(name, false), drag_msg),
@@ -262,7 +280,9 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
                     background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
                     ..Default::default()
                 }),
-            scrollable(custom_list).width(Length::Fill).height(Length::Fill),
+            scrollable(custom_list)
+                .width(Length::Fill)
+                .height(Length::Fill),
         ]
         .spacing(6)
         .padding(8),
@@ -271,17 +291,13 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
     .height(Length::Fill)
     .style(|_| card_style());
 
-    let custom_drop_zone = DropZone::new(
-        custom_card,
-        dropping.clone(),
-        |proc_name| AppMessage::ConfigureMessage(Message::DropOnCustom(proc_name)),
-    );
+    let custom_drop_zone = DropZone::new(custom_card, dropping.clone(), |proc_name| {
+        AppMessage::ConfigureMessage(Message::DropOnCustom(proc_name))
+    });
 
-    let running_drop_zone = DropZone::new(
-        running_card,
-        dropping.clone(),
-        |proc_name| AppMessage::ConfigureMessage(Message::DropOnRunning(proc_name)),
-    );
+    let running_drop_zone = DropZone::new(running_card, dropping.clone(), |proc_name| {
+        AppMessage::ConfigureMessage(Message::DropOnRunning(proc_name))
+    });
 
     // Minimum height enforced by wrapping in a container; panels grow beyond this.
     let bottom_row = container(
@@ -293,7 +309,9 @@ pub fn view<'a>(cache: &'a AppCache, dragging: Option<&'a str>, process_filter: 
 
     let content = column![
         action_bar,
-        scrollable(grid).width(Length::Fill).height(Length::FillPortion(3)),
+        scrollable(grid)
+            .width(Length::Fill)
+            .height(Length::FillPortion(3)),
         bottom_row,
     ]
     .spacing(10)

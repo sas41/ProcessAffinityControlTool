@@ -1,8 +1,8 @@
+use iced::font;
 use iced::widget::{
-    button, column, container, row, scrollable, text, text_input, Column, Container, Space,
+    Column, Container, Space, button, column, container, row, scrollable, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
-use iced::font;
 
 use crate::gui::widgets::{colored_button_style, icon};
 use crate::gui::{AppCache, Message as AppMessage};
@@ -17,7 +17,7 @@ pub enum Message {
 
 pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a, AppMessage> {
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
-    const GREY:  Color = Color::from_rgb(0.22, 0.22, 0.28);
+    const GREY: Color = Color::from_rgb(0.22, 0.22, 0.28);
 
     let auto_col = if cache.is_auto_mode { GREEN } else { GREY };
 
@@ -51,11 +51,12 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
 
     // ── Launchers column ──────────────────────────────────────────────────────
     // Right padding leaves room for the scrollbar so the [x] button isn't hidden.
-    let launcher_list = cache
-        .launchers
-        .iter()
-        .cloned()
-        .fold(Column::new().spacing(4).padding(Padding { right: 14.0, ..Default::default() }), |col, name| {
+    let launcher_list = cache.launchers.iter().cloned().fold(
+        Column::new().spacing(4).padding(Padding {
+            right: 14.0,
+            ..Default::default()
+        }),
+        |col, name| {
             let name_clone = name.clone();
             col.push(
                 row![
@@ -74,7 +75,8 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
                 ]
                 .align_y(Alignment::Center),
             )
-        });
+        },
+    );
 
     let new_launcher_input = text_input("launcher name…", new_launcher_name)
         .on_input(|s| AppMessage::AutoModeMessage(Message::UpdateNewLauncherName(s)))
@@ -92,7 +94,9 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
                 weight: font::Weight::Bold,
                 ..Default::default()
             }),
-            scrollable(launcher_list).width(Length::Fill).height(Length::Fill),
+            scrollable(launcher_list)
+                .width(Length::Fill)
+                .height(Length::Fill),
             row![new_launcher_input, add_btn]
                 .spacing(6)
                 .align_y(Alignment::Center),
@@ -113,13 +117,13 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
     });
 
     // ── Detected column ───────────────────────────────────────────────────────
-    let detected_list = cache
-        .detections
-        .iter()
-        .cloned()
-        .fold(Column::new().spacing(4).padding(Padding { right: 14.0, ..Default::default() }), |col, name| {
-            col.push(text(name).size(13).color(Color::from_rgb(0.65, 0.65, 0.65)))
-        });
+    let detected_list = cache.detections.iter().cloned().fold(
+        Column::new().spacing(4).padding(Padding {
+            right: 14.0,
+            ..Default::default()
+        }),
+        |col, name| col.push(text(name).size(13).color(Color::from_rgb(0.65, 0.65, 0.65))),
+    );
 
     let detected_card = container(
         column![
@@ -127,7 +131,9 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
                 weight: font::Weight::Bold,
                 ..Default::default()
             }),
-            scrollable(detected_list).width(Length::Fill).height(Length::Fill),
+            scrollable(detected_list)
+                .width(Length::Fill)
+                .height(Length::Fill),
         ]
         .spacing(8)
         .padding(10),

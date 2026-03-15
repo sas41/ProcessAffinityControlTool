@@ -1,11 +1,11 @@
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
+    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
-use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
 use crate::gui::Message as AppMessage;
+use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
 
 // ─── Custom process editor dialog ─────────────────────────────────────────────
 
@@ -210,26 +210,25 @@ impl CustomProcessEditor {
                 .spacing(5);
 
                 let topo = crate::core::topology::get_topology();
-                let quick_select = if topo.is_hybrid() {
-                    quick_select
-                        .push(button("P-cores").on_press(AppMessage::CustomProcessEditorMessage(
-                            Message::SelectPCores,
-                        )))
-                        .push(button("E-cores").on_press(AppMessage::CustomProcessEditorMessage(
-                            Message::SelectECores,
-                        )))
-                } else {
-                    quick_select
-                };
+                let quick_select =
+                    if topo.is_hybrid() {
+                        quick_select
+                            .push(button("P-cores").on_press(
+                                AppMessage::CustomProcessEditorMessage(Message::SelectPCores),
+                            ))
+                            .push(button("E-cores").on_press(
+                                AppMessage::CustomProcessEditorMessage(Message::SelectECores),
+                            ))
+                    } else {
+                        quick_select
+                    };
 
                 let quick_select = {
                     let mut row = quick_select;
                     for (i, _) in topo.get_ccd_groups().iter().enumerate() {
-                        row = row.push(
-                            button(text(format!("CCD {i}"))).on_press(
-                                AppMessage::CustomProcessEditorMessage(Message::SelectCCD(i)),
-                            ),
-                        );
+                        row = row.push(button(text(format!("CCD {i}"))).on_press(
+                            AppMessage::CustomProcessEditorMessage(Message::SelectCCD(i)),
+                        ));
                     }
                     row
                 };
@@ -299,15 +298,18 @@ impl CustomProcessEditor {
                         ))
                 };
                 let priority_grid = column![
-                    Row::new().spacing(5)
+                    Row::new()
+                        .spacing(5)
                         .push(make_btn(0, PRIORITY_LABELS[0]))
                         .push(make_btn(1, PRIORITY_LABELS[1]))
                         .push(make_btn(2, PRIORITY_LABELS[2])),
-                    Row::new().spacing(5)
+                    Row::new()
+                        .spacing(5)
                         .push(make_btn(3, PRIORITY_LABELS[3]))
                         .push(make_btn(4, PRIORITY_LABELS[4]))
                         .push(make_btn(5, PRIORITY_LABELS[5])),
-                ].spacing(5);
+                ]
+                .spacing(5);
                 content = content.push(priority_grid);
             }
             content
@@ -329,8 +331,7 @@ impl CustomProcessEditor {
                     text_color: Color::WHITE,
                     ..Default::default()
                 }),
-            button("Cancel")
-                .on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
+            button("Cancel").on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
         ]
         .spacing(10);
 

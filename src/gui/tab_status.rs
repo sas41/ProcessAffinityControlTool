@@ -1,5 +1,5 @@
 use iced::widget::{
-    button, column, container, progress_bar, row, scrollable, text, Column, Row, Space,
+    Column, Row, Space, button, column, container, progress_bar, row, scrollable, text,
 };
 use iced::{Alignment, Color, Element, Length};
 
@@ -9,7 +9,6 @@ use crate::gui::topology_diagram::{
 };
 use crate::gui::widgets::{color_swatch, colored_button_style, icon, stat_badge};
 use crate::gui::{AppCache, Message as AppMessage};
-
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -26,55 +25,81 @@ pub fn view<'a>(
     // ── Top control bar ───────────────────────────────────────────────────────
     // Pleasant green / red for scanner; green / neutral for auto mode.
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
-    const RED:   Color = Color::from_rgb(0.72, 0.18, 0.18);
-    const GREY:  Color = Color::from_rgb(0.22, 0.22, 0.28);
+    const RED: Color = Color::from_rgb(0.72, 0.18, 0.18);
+    const GREY: Color = Color::from_rgb(0.22, 0.22, 0.28);
 
     let scanner_col = if cache.is_scanner_active { GREEN } else { RED };
-    let auto_col    = if cache.is_auto_mode { GREEN } else { GREY };
+    let auto_col = if cache.is_auto_mode { GREEN } else { GREY };
 
     let scanner_btn = button(
-        container(row![
-            text(if cache.is_scanner_active { "Pause" } else { "Resume" }).size(13),
-            icon(if cache.is_scanner_active {
-                iced_fonts::Bootstrap::PauseFill
-            } else {
-                iced_fonts::Bootstrap::PlayFill
-            }),
-        ].spacing(6).align_y(Alignment::Center))
-        .width(Length::Fill).center_x(Length::Fill),
+        container(
+            row![
+                text(if cache.is_scanner_active {
+                    "Pause"
+                } else {
+                    "Resume"
+                })
+                .size(13),
+                icon(if cache.is_scanner_active {
+                    iced_fonts::Bootstrap::PauseFill
+                } else {
+                    iced_fonts::Bootstrap::PlayFill
+                }),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .width(Length::Fill)
+        .center_x(Length::Fill),
     )
     .on_press(AppMessage::StatusMessage(Message::ToggleScanner))
     .width(Length::Fixed(120.0))
     .style(colored_button_style(scanner_col));
 
     let auto_btn = button(
-        container(row![
-            text("Auto Mode").size(13),
-            icon(if cache.is_auto_mode {
-                iced_fonts::Bootstrap::ToggleOn
-            } else {
-                iced_fonts::Bootstrap::ToggleOff
-            }),
-        ].spacing(6).align_y(Alignment::Center))
-        .width(Length::Fill).center_x(Length::Fill),
+        container(
+            row![
+                text("Auto Mode").size(13),
+                icon(if cache.is_auto_mode {
+                    iced_fonts::Bootstrap::ToggleOn
+                } else {
+                    iced_fonts::Bootstrap::ToggleOff
+                }),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .width(Length::Fill)
+        .center_x(Length::Fill),
     )
     .on_press(AppMessage::StatusMessage(Message::ToggleAutoMode))
     .width(Length::Fixed(120.0))
     .style(colored_button_style(auto_col));
 
     let scan_btn = button(
-        container(row![
-            text("Fresh Scan").size(13),
-            icon(iced_fonts::Bootstrap::ArrowClockwise),
-        ].spacing(6).align_y(Alignment::Center))
-        .width(Length::Fill).center_x(Length::Fill),
+        container(
+            row![
+                text("Fresh Scan").size(13),
+                icon(iced_fonts::Bootstrap::ArrowClockwise),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .width(Length::Fill)
+        .center_x(Length::Fill),
     )
     .on_press(AppMessage::StatusMessage(Message::RequestFreshScan))
     .width(Length::Fixed(120.0))
     .style(colored_button_style(GREY));
 
-    let top_bar = row![scanner_btn, Space::with_width(8.0), auto_btn, Space::with_width(8.0), scan_btn]
-        .align_y(Alignment::Center);
+    let top_bar = row![
+        scanner_btn,
+        Space::with_width(8.0),
+        auto_btn,
+        Space::with_width(8.0),
+        scan_btn
+    ]
+    .align_y(Alignment::Center);
 
     // ── Stats ─────────────────────────────────────────────────────────────────
     let assigned_count = {
@@ -84,7 +109,11 @@ pub fn view<'a>(
             .map(|(n, _)| n.as_str())
             .chain(cache.custom_processes.iter().map(|cp| cp.name.as_str()))
             .collect();
-        cache.running.iter().filter(|n| managed_names.contains(n.as_str())).count()
+        cache
+            .running
+            .iter()
+            .filter(|n| managed_names.contains(n.as_str()))
+            .count()
     };
 
     let stats_row = row![
@@ -92,9 +121,17 @@ pub fn view<'a>(
         Space::with_width(12.0),
         stat_badge("Assigned", assigned_count, Color::from_rgb(0.5, 1.0, 0.5)),
         Space::with_width(12.0),
-        stat_badge("Inaccessible", cache.protected_count, Color::from_rgb(1.0, 0.5, 0.5)),
+        stat_badge(
+            "Inaccessible",
+            cache.protected_count,
+            Color::from_rgb(1.0, 0.5, 0.5)
+        ),
         Space::with_width(12.0),
-        stat_badge("Groups", cache.groups.len(), Color::from_rgb(1.0, 0.84, 0.0)),
+        stat_badge(
+            "Groups",
+            cache.groups.len(),
+            Color::from_rgb(1.0, 0.84, 0.0)
+        ),
     ]
     .align_y(Alignment::Center);
 
@@ -118,7 +155,12 @@ pub fn view<'a>(
         .iter()
         .enumerate()
         .map(|(gi, topo_group)| {
-            draw_topology_group(topo_group, &cache.cpu_stats, &core_group_map, group_section_color(gi))
+            draw_topology_group(
+                topo_group,
+                &cache.cpu_stats,
+                &core_group_map,
+                group_section_color(gi),
+            )
         })
         .collect();
 
