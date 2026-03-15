@@ -644,5 +644,6 @@ fn main() -> iced::Result {
         .settings(settings)
         .subscription(subscription)
         .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
+        .theme(iced::Theme::Dark)
         .run()
 }
