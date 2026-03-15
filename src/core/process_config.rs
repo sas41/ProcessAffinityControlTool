@@ -1,27 +1,39 @@
 use crate::core::topology::{CpuTopology, TopologyPreset};
 use serde::{Deserialize, Serialize};
 
-// ─── ProcessPriority ─────────────────────────────────────────────────────────
-
+/// OS process priority class used by this tool.
+/// `#[derive(...)]` asks Rust to auto-implement common traits for this type.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// `pub` means publicly visible outside this module (like C# `public`).
+/// `enum` defines a closed set of named variants.
 pub enum ProcessPriority {
+    /// Lowest scheduling preference.
     Idle,
+    /// Lower-than-normal scheduling preference.
     BelowNormal,
+    /// Default scheduling preference.
     Normal,
+    /// Higher-than-normal scheduling preference.
     AboveNormal,
+    /// High scheduling preference.
     High,
+    /// Highest scheduling preference (use sparingly).
     RealTime,
 }
 
 impl Default for ProcessPriority {
+    /// `impl Trait for Type` implements a trait (similar to interface-like behavior).
     fn default() -> Self {
+        // `Self` refers to the current type (`ProcessPriority`) in this impl block.
         ProcessPriority::Normal
     }
 }
 
-// ─── ProcessConfig (affinity + priority, both concrete) ──────────────────────
-
-/// Concrete affinity + priority settings — used where both values are known.
+/// Concrete affinity and priority settings.
+///
+/// `serde(rename = ...)` keeps compatibility with external PascalCase keys
+/// (`Priority`, `AffinityMask`, `CoreList`). Missing keys are not auto-filled
+/// because these fields do not use `serde(default)`.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProcessConfig {
@@ -32,11 +44,13 @@ pub struct ProcessConfig {
     pub affinity_mask: u64,
 
     #[serde(rename = "CoreList")]
+    /// `Vec<usize>` is a growable array of platform-sized unsigned indexes.
     pub core_list: Vec<usize>,
 }
 
 impl Default for ProcessConfig {
     fn default() -> Self {
+        // `let mut` creates a mutable local variable.
         let mut config = Self {
             priority: ProcessPriority::Normal,
             affinity_mask: 0,
@@ -49,8 +63,12 @@ impl Default for ProcessConfig {
 
 #[allow(dead_code)]
 impl ProcessConfig {
+    /// Builds a concrete config from an explicit core list and priority.
+    ///
+    /// Panics if any core index is outside `0..num_cpus::get()`.
     pub fn new(core_list: Vec<usize>, priority: ProcessPriority) -> Self {
         let max_count = num_cpus::get();
+        // `|...|` starts a closure; `&x` destructures each referenced item from the iterator.
         if core_list.iter().any(|&x| x >= max_count) {
             panic!(
                 "Thread numbers are between 0 and {} on this machine!",
@@ -66,11 +84,17 @@ impl ProcessConfig {
         config
     }
 
+    /// Converts a topology preset into a concrete core list.
+    ///
+    /// Presets that resolve to an empty list are normalized by
+    /// `recalculate_mask()` to core `0`.
     pub fn from_topology_preset(
+        // `&Type` is an immutable borrow/reference (roughly C# `in`/read-only reference semantics).
         topology: &CpuTopology,
         preset: TopologyPreset,
         _idx: usize,
     ) -> Self {
+        // `match` is an exhaustive pattern match expression.
         let core_list = match preset {
             TopologyPreset::PerformanceCores => topology.get_performance_cores(),
             TopologyPreset::EfficiencyCores => topology.get_efficiency_cores(),
@@ -101,7 +125,12 @@ impl ProcessConfig {
         Self::new(core_list, ProcessPriority::Normal)
     }
 
+    /// Recomputes `affinity_mask` from `core_list`.
+    ///
+    /// Empty `core_list` is normalized to `[0]` so the process always has at
+    /// least one runnable core.
     pub fn recalculate_mask(&mut self) -> u64 {
+        // `&mut self` is a mutable borrow of the current instance.
         let max_cores = num_cpus::get() as u64;
         if self.core_list.iter().any(|&x| x as u64 >= max_cores) {
             panic!("Invalid core number. Max: {}", max_cores - 1);
@@ -129,42 +158,35 @@ impl ProcessConfig {
     }
 }
 
-// ─── ProcessGroup ─────────────────────────────────────────────────────────────
-
-/// A named group that processes can be assigned to.
+/// Named group for shared process settings.
 ///
-/// Both `affinity` and `priority` are optional:
-/// - `None` means "do not touch this attribute for processes in this group".
-/// - `Some(_)` means "apply this value".
-///
-/// `is_default`: at most one group carries this flag.  Processes not explicitly
-/// assigned to any other group land here.  If no group is default, unassigned
-/// processes are left completely untouched.
-///
-/// `is_blacklist`: processes in this group are completely skipped — no affinity
-/// or priority is applied.
+/// `affinity` and `priority` are optional:
+/// - `Option<T>` is Rust's nullable/optional container.
+/// - `None`: leave that attribute unchanged.
+/// - `Some(_)`: apply that value.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProcessGroup {
-    /// Display name for the group (unique within a config).
+    /// Display name (unique within a config).
     pub name: String,
 
-    /// If `Some`, set these cores as the CPU affinity.  If `None`, do not
-    /// change the affinity of processes in this group.
+    /// CPU affinity to apply, or `None` to leave unchanged.
     pub affinity: Option<AffinityConfig>,
 
-    /// If `Some`, set this priority class.  If `None`, do not change priority.
+    /// Priority class to apply, or `None` to leave unchanged.
     pub priority: Option<ProcessPriority>,
 
-    /// This group receives all processes that are not explicitly assigned
-    /// elsewhere.  Only one group may have this set to `true`.
+    /// Fallback group for unassigned processes. At most one group should use this.
     pub is_default: bool,
 
-    /// Processes in this group are skipped entirely (the blacklist semantic).
+    /// Skip all changes for processes in this group.
     pub is_blacklist: bool,
 }
 
-/// Affinity is stored as both a core list (for display/editing) and a pre-
-/// computed bitmask (for fast application).  Always kept in sync.
+/// CPU affinity as editable core list plus precomputed bitmask.
+///
+/// `core_list` is the user-facing value; `affinity_mask` is the derived bitset
+/// used when applying affinity. Unlike `ProcessConfig`, an empty `core_list`
+/// stays empty here and produces a zero mask.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AffinityConfig {
     pub core_list: Vec<usize>,
@@ -186,16 +208,15 @@ impl AffinityConfig {
         }
     }
 
-    /// All logical cores on this machine.
+    /// Affinity spanning all logical cores.
     pub fn all_cores() -> Self {
         Self::new((0..num_cpus::get()).collect())
     }
 }
 
-// ─── CustomProcess ────────────────────────────────────────────────────────────
-
-/// A single process with its own explicit affinity and priority settings,
-/// independent of any group.
+/// Per-process settings independent of group membership.
+///
+/// `None` means "do not override" that attribute for this process.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CustomProcess {
     pub name: String,
@@ -224,8 +245,6 @@ impl ProcessGroup {
         }
     }
 }
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

@@ -1,30 +1,45 @@
+//! Options-tab UI: user-facing settings and quick status info.
+
 use iced::font;
+
 use iced::widget::{
     Column, Container, Space, button, column, container, row, scrollable, slider, text,
 };
+
 use iced::{Alignment, Background, Color, Font, Length};
 
 use crate::gui::priority::{PRIORITY_LABELS, priority_to_index};
 use crate::gui::topology_diagram::group_color;
 use crate::gui::{AppCache, Message as AppMessage};
 
+/// User actions emitted from the Options tab.
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Slider changed: update scan interval (milliseconds).
     SetScanInterval(f32),
+
+    /// Button pressed: restore built-in default config values.
     ResetConfig,
+
+    /// Button pressed: open the project GitHub page.
     OpenGitHub,
 }
 
+/// Builds the full Options tab view from top to bottom sections.
+/// `<'a>` is a lifetime parameter (borrow scope), not a generic type.
 pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessage> {
     let scan_ms = cache.scan_interval as f32;
 
-    // ── Scan Interval ─────────────────────────────────────────────────────────
+    // Section 1: scan interval controls.
+    // `column![...]` uses a macro (`!`) to build a widget tree.
     let interval_section = column![
         text("Scan Interval").size(16).font(Font {
             weight: font::Weight::Bold,
+            // Struct update syntax: keep all other fields at default values.
             ..Default::default()
         }),
         row![
+            // `a..=b` is an inclusive range; `|v| { ... }` is a closure (lambda).
             slider(500.0f32..=10000.0, scan_ms, |v| {
                 AppMessage::OptionsMessage(Message::SetScanInterval(v))
             })
@@ -38,7 +53,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     ]
     .spacing(8);
 
-    // ── Configuration ─────────────────────────────────────────────────────────
+    // Section 2: import/export/reset config actions.
     let config_section = column![
         text("Configuration").size(16).font(Font {
             weight: font::Weight::Bold,
@@ -55,7 +70,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     ]
     .spacing(8);
 
-    // ── CPU Topology ──────────────────────────────────────────────────────────
+    // Section 3: read-only CPU topology details.
     let topology_section = column![
         text("CPU Topology").size(16).font(Font {
             weight: font::Weight::Bold,
@@ -67,7 +82,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     ]
     .spacing(8);
 
-    // ── Groups overview ───────────────────────────────────────────────────────
+    // Section 4: groups overview table.
     let italic = Font {
         style: iced::font::Style::Italic,
         ..Default::default()
@@ -109,67 +124,74 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     ]
     .spacing(0);
 
-    // Pre-count assigned processes per group — O(M) instead of O(N×M).
+    // Pre-count assigned processes per group for the table.
     let mut proc_counts: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
+
+    // `_` ignores an unused tuple item; `&` borrows instead of moving.
     for (_, grp) in &cache.assigned {
+        // `entry(...).or_default()` inserts missing key with `usize::default()` (0).
         *proc_counts.entry(grp.to_lowercase()).or_default() += 1;
     }
 
-    let group_rows =
-        cache
-            .groups
-            .iter()
-            .enumerate()
-            .fold(Column::new().spacing(4), |col, (gi, g)| {
-                let affinity_str = match &g.affinity {
-                    Some(aff) => format!("{} cores", aff.core_list.len()),
-                    None => "ignore".to_string(),
-                };
-                let priority_str = match &g.priority {
-                    Some(p) => PRIORITY_LABELS[priority_to_index(p)].to_string(),
-                    None => "ignore".to_string(),
-                };
-                let flags_str = if g.is_default {
-                    "default".to_string()
-                } else if g.is_blacklist {
-                    "blacklist".to_string()
-                } else {
-                    "-".to_string()
-                };
-                let proc_count = proc_counts
-                    .get(&g.name.to_lowercase())
-                    .copied()
-                    .unwrap_or(0);
-                let gc = group_color(gi);
+    let group_rows = cache
+        .groups
+        .iter()
+        .enumerate()
+        // `fold(init, |acc, item| ...)` reduces iterator items into one value.
+        .fold(Column::new().spacing(4), |col, (gi, g)| {
+            let affinity_str = match &g.affinity {
+                Some(aff) => format!("{} cores", aff.core_list.len()),
+                None => "ignore".to_string(),
+            };
 
-                col.push(
-                    row![
-                        text(g.name.clone())
-                            .size(13)
-                            .color(gc)
-                            .width(Length::Fixed(130.0)),
-                        text(affinity_str)
-                            .size(13)
-                            .font(italic)
-                            .color(Color::from_rgb(0.65, 0.65, 0.65))
-                            .width(Length::Fixed(80.0)),
-                        text(priority_str)
-                            .size(13)
-                            .font(italic)
-                            .color(Color::from_rgb(0.65, 0.65, 0.65))
-                            .width(Length::Fixed(80.0)),
-                        text(flags_str)
-                            .size(13)
-                            .color(Color::from_rgb(0.65, 0.65, 0.65))
-                            .width(Length::Fixed(80.0)),
-                        text(proc_count.to_string())
-                            .size(13)
-                            .color(Color::from_rgb(0.65, 0.65, 0.65)),
-                    ]
-                    .spacing(0),
-                )
-            });
+            let priority_str = match &g.priority {
+                Some(p) => PRIORITY_LABELS[priority_to_index(p)].to_string(),
+                None => "ignore".to_string(),
+            };
+
+            let flags_str = if g.is_default {
+                "default".to_string()
+            } else if g.is_blacklist {
+                "blacklist".to_string()
+            } else {
+                "-".to_string()
+            };
+
+            let proc_count = proc_counts
+                .get(&g.name.to_lowercase())
+                .copied()
+                .unwrap_or(0);
+
+            let gc = group_color(gi);
+
+            col.push(
+                row![
+                    text(g.name.clone())
+                        .size(13)
+                        .color(gc)
+                        .width(Length::Fixed(130.0)),
+                    text(affinity_str)
+                        .size(13)
+                        .font(italic)
+                        .color(Color::from_rgb(0.65, 0.65, 0.65))
+                        .width(Length::Fixed(80.0)),
+                    text(priority_str)
+                        .size(13)
+                        .font(italic)
+                        .color(Color::from_rgb(0.65, 0.65, 0.65))
+                        .width(Length::Fixed(80.0)),
+                    text(flags_str)
+                        .size(13)
+                        .color(Color::from_rgb(0.65, 0.65, 0.65))
+                        .width(Length::Fixed(80.0)),
+                    text(proc_count.to_string())
+                        .size(13)
+                        .color(Color::from_rgb(0.65, 0.65, 0.65)),
+                ]
+                .spacing(0),
+            )
+        });
 
     let groups_section = column![
         text("Groups overview").size(16).font(Font {
@@ -181,6 +203,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     ]
     .spacing(8);
 
+    // Shared horizontal divider used between sections.
     let divider = || {
         container(Space::new().height(1.0))
             .width(Length::Fill)

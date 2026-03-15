@@ -1,11 +1,39 @@
+//! Background process scanner and affinity/priority controller.
+//!
+//! Lifecycle:
+//! - `ProcessOverwatch` holds shared state and policy.
+//! - `ScanHandler::start` spawns one worker thread.
+//! - `ScanHandler::stop` signals shutdown, joins the thread, then restores snapshots.
+//!
+//! Threading and message flow:
+//! - Shared state uses `Arc<Mutex<...>>` so UI/control code and worker code can coordinate safely.
+//! - `stop_flag` is an `AtomicBool` polled by the worker loop.
+//! - `fresh_scan_requested` is a one-shot flag consumed each loop (`take_fresh_scan`).
+//! - Auto-mode detections are rebuilt by the worker, then consumed by scan/apply logic.
+//!
+//! Rust quick map for C# readers (first-encounter syntax/symbols used here):
+//! - `Arc<T>`: atomic ref-counted shared ownership (`System.Threading` + shared reference semantics).
+//! - `Mutex<T>` + `.lock().unwrap()`: lock to access `T`; `unwrap()` is fail-fast like letting an unexpected exception terminate.
+//! - `Option<T>` with `Some(v)` / `None`: nullable-like value without `null` (`T?`/`Nullable<T>` concept).
+//! - `if let Some(x) = ...`: concise "if value exists" pattern.
+//! - `match`: exhaustive pattern switch (`switch` expression with compile-time coverage checks).
+//! - `&T` / `&mut T`: borrowed reference / mutable borrowed reference (`ref`-like access without ownership transfer).
+//! - `*x` (for references/guards): dereference to the inner value.
+//! - `#[cfg(...)]`: conditional compilation (similar role to `#if` target checks).
+//! - `move || { ... }`: closure that captures and owns values (used for thread entry).
+
 use crate::core::pact_config::{CaseInsensitiveHashSet, PACTConfig};
 use crate::core::process_config::ProcessPriority;
+
 use std::collections::HashMap;
 use std::collections::HashSet;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
 use std::thread;
 use std::time::Duration;
+
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 
 #[cfg(target_os = "windows")]
@@ -14,70 +42,83 @@ use windows::Win32::System::Threading::{
     SetProcessAffinityMask,
 };
 
-// ─── CpuStats ────────────────────────────────────────────────────────────────
-
+/// CPU usage and frequency snapshot.
 #[derive(Debug, Clone, Default)]
 pub struct CpuStats {
+    /// Per-core CPU usage percentage.
     pub per_core: Vec<f32>,
-    /// Per-core frequency in MHz (same length as per_core, 0 if unavailable).
+
+    /// Per-core frequency in MHz.
     pub per_core_mhz: Vec<u64>,
+
+    /// Global average CPU usage percentage.
     pub global: f32,
 }
 
-// ─── OriginalProcessState ────────────────────────────────────────────────────
-
-/// The pre-modification affinity and/or priority of a single process.
-///
-/// Only attributes that were actually changed are stored — an `Option::None`
-/// means "we did not touch this attribute, so there is nothing to restore".
+/// Pre-modification process state used for restoration.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct OriginalProcessState {
-    /// The affinity mask the process had **before** we first set it.
-    /// `None` if we never touched affinity for this process.
+    /// Original affinity mask, if affinity was modified.
     pub affinity_mask: Option<u64>,
 
-    /// The Windows PROCESS_CREATION_FLAGS priority-class value (or equivalent
-    /// on Linux) the process had before we first changed it.
-    /// `None` if we never touched priority for this process.
+    /// Original priority class, if priority was modified.
     pub priority_class: Option<u32>,
 }
 
-// ─── Inner shared state ───────────────────────────────────────────────────────
-
+/// Shared mutable state used by control code and scan thread.
 struct ProcessOverwatchInner {
+    /// User-configured settings.
     pub user_config: Mutex<PACTConfig>,
+
+    /// Currently active settings.
     pub active_config: Mutex<PACTConfig>,
+
+    /// Config mirrored while scanner is paused.
     pub paused_config: Mutex<PACTConfig>,
 
+    /// PIDs currently managed.
     pub managed_processes: Mutex<HashSet<u32>>,
+
+    /// PIDs that failed modification.
     pub protected_processes: Mutex<HashSet<u32>>,
 
+    /// Whether auto-mode detection is enabled.
     pub auto_mode: Mutex<bool>,
+
+    /// Auto-mode detections.
     pub auto_mode_detections: Mutex<CaseInsensitiveHashSet>,
+
+    /// Child PID to parent name cache for auto-mode checks.
     pub child_parent_pairs: Mutex<HashMap<u32, String>>,
 
+    /// One-shot full rescan request, consumed by worker loop.
     pub fresh_scan_requested: Mutex<bool>,
+
+    /// Scanner activity flag (pause/resume without stopping thread).
     pub scanner_active: Mutex<bool>,
 
+    /// Latest CPU statistics.
     pub cpu_stats: Mutex<CpuStats>,
+
+    /// Snapshot of running process names.
     pub running_processes: Mutex<Vec<String>>,
+
+    /// Names of processes that failed modification.
     pub protected_process_names: Mutex<Vec<String>>,
 
-    /// Snapshot of original process state taken just before we first modify
-    /// each process.  Keyed by PID.  Populated lazily; never removed while
-    /// the program is running so that we can always restore on exit.
+    /// Per-PID original state captured before first modification.
     pub original_states: Mutex<HashMap<u32, OriginalProcessState>>,
 }
 
-// ─── ProcessOverwatch ────────────────────────────────────────────────────────
-
+/// Public controller for policy and shared scan state.
 #[derive(Clone)]
 pub struct ProcessOverwatch {
     inner: Arc<ProcessOverwatchInner>,
 }
 
 impl ProcessOverwatch {
+    /// Creates shared state; thread is started separately by `ScanHandler`.
     pub fn new(user_config: PACTConfig) -> Self {
         let paused_config = PACTConfig::default();
         let active_config = user_config.clone();
@@ -101,44 +142,52 @@ impl ProcessOverwatch {
         }
     }
 
-    // ── Read accessors ────────────────────────────────────────────────────
-
+    /// Returns whether the scanner thread is active.
     pub fn is_scanner_active(&self) -> bool {
         *self.inner.scanner_active.lock().unwrap()
     }
 
+    /// Returns whether auto mode is enabled.
     pub fn is_auto_mode(&self) -> bool {
         *self.inner.auto_mode.lock().unwrap()
     }
 
+    /// Returns the number of managed processes.
     pub fn managed_process_count(&self) -> usize {
         self.inner.managed_processes.lock().unwrap().len()
     }
 
+    /// Returns the number of protected processes.
     pub fn protected_process_count(&self) -> usize {
         self.inner.protected_processes.lock().unwrap().len()
     }
 
+    /// Returns the scan interval in milliseconds.
     pub fn scan_interval(&self) -> u64 {
         self.inner.user_config.lock().unwrap().scan_interval
     }
 
+    /// Updates the scan interval in milliseconds.
     pub fn set_scan_interval(&self, ms: u64) {
         self.inner.user_config.lock().unwrap().scan_interval = ms;
     }
 
+    /// Returns a copy of the latest CPU statistics.
     pub fn cpu_stats(&self) -> CpuStats {
         self.inner.cpu_stats.lock().unwrap().clone()
     }
 
+    /// Returns a copy of current running process names.
     pub fn running_processes(&self) -> Vec<String> {
         self.inner.running_processes.lock().unwrap().clone()
     }
 
+    /// Returns a copy of process names that failed modification.
     pub fn protected_process_names(&self) -> Vec<String> {
         self.inner.protected_process_names.lock().unwrap().clone()
     }
 
+    /// Returns sorted auto-mode detections.
     pub fn auto_mode_detections_list(&self) -> Vec<String> {
         let mut v: Vec<String> = self
             .inner
@@ -148,18 +197,22 @@ impl ProcessOverwatch {
             .iter()
             .cloned()
             .collect();
+
         v.sort();
         v
     }
 
+    /// Locks and returns the user config.
     pub fn user_config_lock(&self) -> std::sync::MutexGuard<'_, PACTConfig> {
         self.inner.user_config.lock().unwrap()
     }
 
+    /// Locks and returns the user config for mutation.
     pub fn user_config_lock_mut(&self) -> std::sync::MutexGuard<'_, PACTConfig> {
         self.inner.user_config.lock().unwrap()
     }
 
+    /// Atomically reads and clears the one-shot fresh-scan request.
     pub fn take_fresh_scan(&self) -> bool {
         let mut flag = self.inner.fresh_scan_requested.lock().unwrap();
         let was = *flag;
@@ -167,8 +220,7 @@ impl ProcessOverwatch {
         was
     }
 
-    // ── Control ───────────────────────────────────────────────────────────
-
+    /// Pauses/resumes applying policy by swapping active config.
     pub fn toggle_process_overwatch(&self) -> bool {
         let mut active = self.inner.scanner_active.lock().unwrap();
         if *active {
@@ -183,20 +235,22 @@ impl ProcessOverwatch {
         *active
     }
 
+    /// Toggles auto mode and returns the new state.
     pub fn toggle_auto_mode(&self) -> bool {
         let mut m = self.inner.auto_mode.lock().unwrap();
         *m = !*m;
         *m
     }
 
+    /// Requests a full rescan on the next scan cycle.
     pub fn request_fresh_scan(&self) {
         *self.inner.fresh_scan_requested.lock().unwrap() = true;
     }
 
-    // ── Scan helpers ──────────────────────────────────────────────────────
-
+    /// Refreshes and returns CPU usage and frequency stats.
     pub fn refresh_cpu_stats(system: &mut System) -> CpuStats {
         system.refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage().with_frequency());
+
         let cpus = system.cpus();
         let per_core: Vec<f32> = cpus.iter().map(|c| c.cpu_usage()).collect();
         let per_core_mhz: Vec<u64> = cpus.iter().map(|c| c.frequency()).collect();
@@ -212,17 +266,19 @@ impl ProcessOverwatch {
         }
     }
 
+    /// Rebuilds parent cache and auto-mode detections from live process data.
     pub fn update_child_parent_pairs(&self, system: &System) {
         let mut pairs: HashMap<u32, String> = HashMap::new();
         let mut detections = CaseInsensitiveHashSet::new();
 
         for (pid, process) in system.processes() {
             let name_lc = process.name().to_string_lossy().to_lowercase();
+
             if name_lc == "idle" || name_lc == "system" {
                 continue;
             }
-            let pid_u32 = pid.as_u32();
 
+            let pid_u32 = pid.as_u32();
             {
                 let cached = self.inner.child_parent_pairs.lock().unwrap();
                 if let Some(parent) = cached.get(&pid_u32) {
@@ -253,10 +309,12 @@ impl ProcessOverwatch {
         *self.inner.auto_mode_detections.lock().unwrap() = detections;
     }
 
+    /// Main scan pass: resolve policy per process, snapshot once, then apply.
     pub fn scan_and_manage(&self, system: &System, forced: bool) {
         if forced {
             self.inner.managed_processes.lock().unwrap().clear();
         }
+
         self.inner.protected_processes.lock().unwrap().clear();
 
         let mut current_set = HashSet::new();
@@ -267,6 +325,7 @@ impl ProcessOverwatch {
             .values()
             .map(|p| p.name().to_string_lossy().into_owned())
             .collect();
+
         all_names.sort_unstable();
         all_names.dedup();
 
@@ -286,13 +345,15 @@ impl ProcessOverwatch {
             let (affinity_mask, priority, is_blacklist) = {
                 let cfg = self.inner.user_config.lock().unwrap();
 
-                // Custom processes take precedence over group assignments.
+                // Custom per-process rule overrides group-based assignment.
                 if let Some(cp) = cfg.custom_process(&process_name) {
                     let mask = cp.affinity.as_ref().map_or(0, |a| a.affinity_mask);
                     (mask, cp.priority.clone(), false)
                 } else {
                     let auto_mode = *self.inner.auto_mode.lock().unwrap();
                     let auto_detections = self.inner.auto_mode_detections.lock().unwrap();
+
+                    // Auto mode only applies when process has no explicit assignment.
                     let is_auto_detected = auto_mode
                         && auto_detections.contains(&process_name)
                         && cfg.process_assignments.get(&process_name).is_none();
@@ -318,15 +379,11 @@ impl ProcessOverwatch {
                 continue;
             }
 
-            // ── Snapshot original state before first modification ──────────
-            // We only read back an attribute if we are about to change it.
-            // This is done inside the apply call below, but we need to know
-            // what we *intend* to change first so we can pass the flags.
             let want_affinity = affinity_mask != 0;
             let want_priority = priority.is_some();
 
             if want_affinity || want_priority {
-                // Only snapshot if not already recorded (first touch only)
+                // Snapshot original state once so we can restore on shutdown.
                 let already_snapshotted = {
                     self.inner
                         .original_states
@@ -334,6 +391,7 @@ impl ProcessOverwatch {
                         .unwrap()
                         .contains_key(&pid_u32)
                 };
+
                 if !already_snapshotted {
                     if let Some(snapshot) =
                         Self::read_original_state(pid_u32, want_affinity, want_priority)
@@ -348,6 +406,7 @@ impl ProcessOverwatch {
             }
 
             let ok = Self::apply_to_process(pid_u32, affinity_mask, priority);
+
             if ok {
                 current_set.insert(pid_u32);
             } else {
@@ -365,10 +424,7 @@ impl ProcessOverwatch {
         *self.inner.protected_process_names.lock().unwrap() = protected_names;
     }
 
-    /// Restore every process we ever modified back to its original state.
-    ///
-    /// Called on program exit.  Processes that have exited since we modified
-    /// them are silently skipped.
+    /// Restores all snapshotted processes to pre-modification values.
     pub fn restore_all(&self) {
         let states = self.inner.original_states.lock().unwrap().clone();
         for (pid, original) in &states {
@@ -376,40 +432,20 @@ impl ProcessOverwatch {
         }
     }
 
-    /// Restore all currently-running processes whose name matches one of the
-    /// provided names, then drop their snapshots so they won't be re-touched
-    /// until the next group assignment changes them.
-    ///
-    /// Called when a group is deleted and has no default group to fall back to.
+    /// Restores matching process names and drops their saved snapshots.
     pub fn restore_processes_by_name(&self, names: &std::collections::HashSet<String>) {
         if names.is_empty() {
             return;
         }
-        // Build a name→[pids] map from the snapshot table using the running
-        // process list.  We only know PIDs, so we have to cross-reference with
-        // sysinfo data that was last refreshed by the scan thread.  As a
-        // pragmatic fallback we iterate over all snapshotted PIDs and restore
-        // any that the OS still reports as belonging to a matching name.
-        // Because sysinfo data isn't accessible here, we restore *all*
-        // snapshotted PIDs for processes whose name appears in the set — the
-        // OS will simply return an error for dead PIDs.
+
         let pids_to_restore: Vec<(u32, OriginalProcessState)> = {
             let states = self.inner.original_states.lock().unwrap();
-            // We can't know which PID maps to which name without a live
-            // process snapshot, so we restore everything and let the next scan
-            // re-apply only the groups that are still configured.
             states.iter().map(|(&pid, s)| (pid, s.clone())).collect()
         };
 
         let lower_names: std::collections::HashSet<String> =
             names.iter().map(|n| n.to_lowercase()).collect();
 
-        // Use the running-processes snapshot (names only) to find which PIDs
-        // to restore.  We need PID→name info; the only source available here
-        // without spawning sysinfo is the managed-processes set paired with
-        // what we can obtain from /proc (Linux) or a lightweight OS call.
-        // For simplicity we restore all snapshotted PIDs whose process name
-        // can be confirmed via the OS, and skip any that don't match.
         for (pid, original) in &pids_to_restore {
             if let Some(name) = Self::process_name_for_pid(*pid) {
                 if lower_names.contains(&name.to_lowercase()) {
@@ -420,8 +456,7 @@ impl ProcessOverwatch {
         }
     }
 
-    /// Attempt to read the executable name of a process by PID using OS APIs.
-    /// Returns `None` if the process no longer exists or cannot be queried.
+    /// Returns process name for a PID, if available.
     #[cfg(target_os = "windows")]
     fn process_name_for_pid(pid: u32) -> Option<String> {
         unsafe {
@@ -430,6 +465,7 @@ impl ProcessOverwatch {
                 QueryFullProcessImageNameW,
             };
             use windows::core::PWSTR;
+
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
             let mut buf = vec![0u16; 260];
             let mut len = buf.len() as u32;
@@ -440,12 +476,13 @@ impl ProcessOverwatch {
                 &mut len,
             )
             .is_ok();
+
             let _ = windows::Win32::Foundation::CloseHandle(handle);
             if !ok {
                 return None;
             }
+
             let full: String = String::from_utf16_lossy(&buf[..len as usize]);
-            // Return just the file name part
             Some(
                 std::path::Path::new(&full)
                     .file_name()
@@ -455,23 +492,21 @@ impl ProcessOverwatch {
         }
     }
 
+    /// Returns process name from `/proc/<pid>/comm`.
     #[cfg(target_os = "linux")]
     fn process_name_for_pid(pid: u32) -> Option<String> {
-        // /proc/<pid>/comm contains just the executable name (up to 15 chars)
         std::fs::read_to_string(format!("/proc/{}/comm", pid))
             .ok()
             .map(|s| s.trim().to_string())
     }
 
+    /// Unsupported platforms return no process name.
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     fn process_name_for_pid(_pid: u32) -> Option<String> {
         None
     }
 
-    // ── Platform implementations ──────────────────────────────────────────
-
-    /// Read the current affinity and/or priority of a process before we
-    /// change them.  Returns `None` if the process cannot be opened.
+    /// Reads current process values before first overwrite (Windows).
     #[cfg(target_os = "windows")]
     fn read_original_state(
         pid: u32,
@@ -484,6 +519,7 @@ impl ProcessOverwatch {
             let affinity_mask = if read_affinity {
                 let mut proc_mask: usize = 0;
                 let mut sys_mask: usize = 0;
+
                 if GetProcessAffinityMask(handle, &mut proc_mask, &mut sys_mask).is_ok() {
                     Some(proc_mask as u64)
                 } else {
@@ -502,7 +538,6 @@ impl ProcessOverwatch {
 
             let _ = windows::Win32::Foundation::CloseHandle(handle);
 
-            // Only return a snapshot if we successfully read at least one value
             if affinity_mask.is_some() || priority_class.is_some() {
                 Some(OriginalProcessState {
                     affinity_mask,
@@ -514,6 +549,7 @@ impl ProcessOverwatch {
         }
     }
 
+    /// Reads affinity mask before first overwrite (Linux).
     #[cfg(target_os = "linux")]
     fn read_original_state(
         pid: u32,
@@ -548,6 +584,7 @@ impl ProcessOverwatch {
         }
     }
 
+    /// Unsupported platforms do not snapshot state.
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     fn read_original_state(
         _pid: u32,
@@ -557,15 +594,13 @@ impl ProcessOverwatch {
         None
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-
-    /// Restore a single process to its recorded original state.
+    /// Restores one process from its recorded state (Windows).
     #[cfg(target_os = "windows")]
     fn restore_process(pid: u32, original: &OriginalProcessState) {
         unsafe {
             let handle = match OpenProcess(PROCESS_ALL_ACCESS, false, pid) {
                 Ok(h) => h,
-                Err(_) => return, // process already gone — nothing to do
+                Err(_) => return,
             };
 
             if let Some(mask) = original.affinity_mask {
@@ -581,6 +616,7 @@ impl ProcessOverwatch {
         }
     }
 
+    /// Restores process affinity from recorded mask (Linux).
     #[cfg(target_os = "linux")]
     fn restore_process(pid: u32, original: &OriginalProcessState) {
         use nix::sched::{CpuSet, sched_setaffinity};
@@ -596,15 +632,13 @@ impl ProcessOverwatch {
             }
             let _ = sched_setaffinity(nix_pid, &cpu_set);
         }
-        // priority (nice) restoration omitted — requires root and is reversible
-        // by the process itself
     }
 
+    /// Unsupported platforms perform no restoration.
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     fn restore_process(_pid: u32, _original: &OriginalProcessState) {}
 
-    // ─────────────────────────────────────────────────────────────────────
-
+    /// Applies affinity/priority and reports success.
     fn apply_to_process(pid: u32, affinity_mask: u64, priority: Option<ProcessPriority>) -> bool {
         if affinity_mask == 0 && priority.is_none() {
             return true;
@@ -612,6 +646,7 @@ impl ProcessOverwatch {
         Self::set_process_affinity_and_priority_impl(pid, affinity_mask, priority)
     }
 
+    /// Applies affinity and priority via Windows APIs.
     #[cfg(target_os = "windows")]
     fn set_process_affinity_and_priority_impl(
         pid: u32,
@@ -622,6 +657,7 @@ impl ProcessOverwatch {
             ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS,
             IDLE_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, REALTIME_PRIORITY_CLASS,
         };
+
         unsafe {
             let handle = match OpenProcess(PROCESS_ALL_ACCESS, false, pid) {
                 Ok(h) => h,
@@ -629,9 +665,11 @@ impl ProcessOverwatch {
             };
 
             let mut ok = true;
+
             if affinity_mask != 0 {
                 ok &= SetProcessAffinityMask(handle, affinity_mask as usize).is_ok();
             }
+
             if let Some(p) = priority {
                 let cls = match p {
                     ProcessPriority::Idle => IDLE_PRIORITY_CLASS,
@@ -643,11 +681,14 @@ impl ProcessOverwatch {
                 };
                 ok &= SetPriorityClass(handle, cls).is_ok();
             }
+
             let _ = windows::Win32::Foundation::CloseHandle(handle);
+
             ok
         }
     }
 
+    /// Applies affinity on Linux. Priority is ignored.
     #[cfg(target_os = "linux")]
     fn set_process_affinity_and_priority_impl(
         pid: u32,
@@ -660,6 +701,7 @@ impl ProcessOverwatch {
         if affinity_mask == 0 {
             return true;
         }
+
         let nix_pid = NixPid::from_raw(pid as i32);
         let mut cpu_set = CpuSet::new();
         for bit in 0..64usize {
@@ -667,9 +709,11 @@ impl ProcessOverwatch {
                 let _ = cpu_set.set(bit);
             }
         }
+
         sched_setaffinity(nix_pid, &cpu_set).is_ok()
     }
 
+    /// Unsupported platforms cannot apply changes.
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     fn set_process_affinity_and_priority_impl(
         _pid: u32,
@@ -680,20 +724,28 @@ impl ProcessOverwatch {
     }
 }
 
+/// Drop is intentionally a no-op.
 impl Drop for ProcessOverwatch {
     fn drop(&mut self) {}
 }
 
-// ─── ScanHandler ─────────────────────────────────────────────────────────────
-
+/// Owns the worker thread lifecycle.
 pub struct ScanHandler {
+    /// Shared controller cloned into the worker thread.
     process_overwatch: ProcessOverwatch,
+
+    /// Scan interval in milliseconds.
     scan_interval: u64,
+
+    /// Stop signal polled by the worker loop.
     stop_flag: Arc<AtomicBool>,
+
+    /// Join handle for the worker thread.
     handle: Option<thread::JoinHandle<()>>,
 }
 
 impl ScanHandler {
+    /// Creates a new scan handler.
     pub fn new(process_overwatch: ProcessOverwatch, scan_interval: u64) -> Self {
         Self {
             process_overwatch,
@@ -703,38 +755,36 @@ impl ScanHandler {
         }
     }
 
+    /// Starts the worker loop.
+    ///
+    /// Rust note: `move` transfers captured values into the new thread closure.
     pub fn start(&mut self) {
         let overwatch = self.process_overwatch.clone();
         let scan_interval = self.scan_interval;
         let stop_flag = Arc::clone(&self.stop_flag);
 
         self.handle = Some(thread::spawn(move || {
-            // Keep CPU and process refresh in separate System instances.
-            // On Linux (and some other platforms) refresh_processes_specifics
-            // resets the kernel CPU-time counters that refresh_cpu_specifics
-            // relies on to compute the usage delta, producing zeros.  Two
-            // isolated instances avoid this interference entirely.
+            // Keep CPU and process refreshers separate to avoid stale CPU deltas on Linux.
             let mut cpu_sys = System::new_with_specifics(
                 RefreshKind::nothing()
                     .with_cpu(CpuRefreshKind::nothing().with_cpu_usage().with_frequency()),
             );
+
             let mut proc_sys = System::new_with_specifics(
                 RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::everything()),
             );
 
-            // Prime CPU sampler — must have one prior sample before the loop
-            // so the first delta is meaningful.
             cpu_sys
                 .refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage().with_frequency());
             thread::sleep(Duration::from_millis(500));
 
             while !stop_flag.load(Ordering::Relaxed) {
-                // Refresh each system independently
                 proc_sys.refresh_processes_specifics(
                     sysinfo::ProcessesToUpdate::All,
                     true,
                     sysinfo::ProcessRefreshKind::everything(),
                 );
+
                 let stats = ProcessOverwatch::refresh_cpu_stats(&mut cpu_sys);
                 *overwatch.inner.cpu_stats.lock().unwrap() = stats;
 
@@ -742,6 +792,7 @@ impl ScanHandler {
                     if overwatch.is_auto_mode() {
                         overwatch.update_child_parent_pairs(&proc_sys);
                     }
+
                     let fresh = overwatch.take_fresh_scan();
                     overwatch.scan_and_manage(&proc_sys, fresh);
                 }
@@ -751,16 +802,14 @@ impl ScanHandler {
         }));
     }
 
-    /// Stop the background scan thread, then restore all modified processes.
+    /// Requests shutdown, waits for worker exit, then restores snapshots.
     pub fn stop(&mut self) {
-        // Signal the thread to exit and wait for it to finish so that no new
-        // modifications can race with our restore pass.
         self.stop_flag.store(true, Ordering::Relaxed);
+
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }
 
-        // Now restore every process we ever touched.
         self.process_overwatch.restore_all();
     }
 }

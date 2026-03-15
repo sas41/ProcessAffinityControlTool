@@ -1,13 +1,21 @@
 use iced::widget::{Column, Row, container, text};
-use iced::{Shadow, Vector, widget::button};
+use iced::{Alignment, Background, Border, Color, Shadow, Vector, widget::button};
 
-/// Coloured button style with distinct hover (brightens) and press (darkens + shadow) states.
-/// Pass the base background colour; text is always white.
+/// Build a reusable button style closure from one base color.
+///
+/// Iced asks for a function (`Theme`, `Status`) -> `Style`, so we capture
+/// `base` once and map each runtime button state to a visual variant:
+/// - `Active`: unchanged base color.
+/// - `Hovered`: brighter version for affordance.
+/// - `Pressed`: darker version plus drop shadow for depth.
+/// - `Disabled`: same hue, lower alpha to signal inactivity.
 pub fn colored_button_style(
     base: iced::Color,
 ) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
-    use iced::{Background, Border};
+    // Rust `impl Fn(...) -> ...` is like returning a delegate/lambda with a hidden concrete type.
     move |_, status| {
+        // `move` captures outer variables by value; `_` means "argument intentionally unused".
+        // `match` is Rust's exhaustive switch-expression (must cover all enum variants).
         let bg = match status {
             button::Status::Active => base,
             button::Status::Hovered => iced::Color::from_rgba(
@@ -21,11 +29,13 @@ pub fn colored_button_style(
             }
             button::Status::Disabled => iced::Color::from_rgba(base.r, base.g, base.b, 0.4),
         };
+
         button::Style {
             background: Some(Background::Color(bg)),
             text_color: iced::Color::WHITE,
             border: Border {
                 radius: 4.0.into(),
+                // `..Default::default()` keeps any fields not listed at their default values.
                 ..Default::default()
             },
             snap: false,
@@ -42,12 +52,13 @@ pub fn colored_button_style(
     }
 }
 
-/// Render a Bootstrap icon glyph as a plain text widget at size 14.
+/// Normalize inline icon glyphs to the standard 14px size.
+/// `Text<'static>` uses a lifetime; `'static` means the text data can live for the whole program.
 pub fn icon(glyph: iced::widget::Text<'static>) -> iced::widget::Text<'static> {
     glyph.size(14.0)
 }
 
-/// Render a Bootstrap icon glyph at size 16, centered in a fixed square.
+/// Render a 16px icon centered in a fixed 28x28 hit target.
 pub fn icon_button_content(
     glyph: iced::widget::Text<'static>,
 ) -> container::Container<'static, crate::gui::Message> {
@@ -57,14 +68,18 @@ pub fn icon_button_content(
         .center_x(28)
         .center_y(28)
 }
-use iced::{Alignment, Background, Border, Color};
 
-/// Compact pill showing a process name with a bordered pill shape.
-/// Dimmed when the process is not currently running.
+/// Compact bordered pill for a process name.
+///
+/// `is_running` drives a simple visual state mapping:
+/// - running: brighter text/border/background for emphasis;
+/// - stopped: dimmed palette to de-emphasize inactive processes.
 pub fn process_pill<Message>(
     name: String,
     is_running: bool,
 ) -> container::Container<'static, Message> {
+    // `<Message>` is a generic type parameter (similar to C# `T`).
+    // `(a, b, c)` on the left destructures a tuple returned by the `if` expression.
     let (text_col, border_col, bg_col) = if is_running {
         (
             Color::from_rgb(0.86, 0.86, 0.86),
@@ -92,8 +107,9 @@ pub fn process_pill<Message>(
         })
 }
 
-/// Numeric stat badge: large coloured number on top, small label below.
-/// Used in the Status tab header row.
+/// Numeric stat badge with value over label.
+/// Used in the Status tab header for quick at-a-glance counts.
+/// `'a` is a named lifetime tying `label: &'a str` to the returned `Column<'a, ...>`.
 pub fn stat_badge<'a, Message>(label: &'a str, value: usize, col: Color) -> Column<'a, Message> {
     Column::new()
         .align_x(Alignment::Center)
@@ -110,7 +126,7 @@ pub fn stat_badge<'a, Message>(label: &'a str, value: usize, col: Color) -> Colu
         .push(text(label).size(12).color(Color::from_rgb(0.7, 0.7, 0.7)))
 }
 
-/// Small filled colour square followed by a text label.
+/// Small filled color swatch followed by a label.
 /// Used in the topology diagram legend.
 pub fn color_swatch<Message: 'static>(col: Color, text_str: String) -> Row<'static, Message> {
     Row::new()

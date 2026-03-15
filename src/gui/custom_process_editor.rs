@@ -1,73 +1,108 @@
+// Modal editor for creating or updating a custom process rule.
 use iced::widget::{
     Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
 };
+
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
-use crate::gui::Message as AppMessage;
+
 use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
 
-// ─── Custom process editor dialog ─────────────────────────────────────────────
+use crate::gui::Message as AppMessage;
 
-/// Modal dialog for creating or editing a CustomProcess (name + affinity + priority).
+/// Modal state for creating or editing one custom process rule.
+///
+/// This struct stores form inputs plus completion flags so the parent screen
+/// can decide whether to save, cancel, or remove an existing rule.
 pub struct CustomProcessEditor {
+    /// Whether the dialog is visible.
     pub open: bool,
 
-    /// Name of the process being edited; empty when creating a new entry.
+    /// Original process name when editing; empty in create mode.
     pub editing_name: String,
 
+    /// Current executable name entered in the form.
     pub name: String,
 
-    // ── Affinity state ────────────────────────────────────────────────────
+    /// Whether affinity override is enabled for this rule.
     pub affinity_enabled: bool,
+
+    /// Per-logical-core selection flags used to build the affinity list.
     pub core_checks: Vec<bool>,
 
-    // ── Priority state ────────────────────────────────────────────────────
+    /// Whether priority override is enabled for this rule.
     pub priority_enabled: bool,
+
+    /// Selected priority option index in `PRIORITY_LABELS`.
     pub priority_index: usize,
 
-    /// Populated when OK is pressed; consumed by the caller.
+    /// Completed result produced by `Message::Ok`.
     pub result: Option<CustomProcess>,
-    /// Set when Delete is pressed; consumed by the caller.
+
+    /// Set when `Message::Delete` is chosen for an existing rule.
     pub delete_requested: bool,
 }
 
-#[derive(Debug, Clone)]
+/// User actions emitted by this editor UI.
+#[derive(Debug, Clone)] // derive ~= C# auto-generated boilerplate (ToString/clone-like traits).
 pub enum Message {
+    /// Process name changed.
     NameChanged(String),
+    /// Toggle affinity override on/off.
     ToggleAffinity,
+    /// Toggle priority override on/off.
     TogglePriority,
+    /// Select a new priority option by index.
     PriorityChanged(usize),
+
+    /// Single core toggled.
     CoreToggled(usize, bool),
+    /// Select all logical cores.
     SelectAllCores,
+    /// Clear all logical core selections.
     SelectNoneCores,
+    /// Select performance cores from detected topology.
     SelectPCores,
+    /// Select efficiency cores from detected topology.
     SelectECores,
+
+    /// Select all cores in CCD index.
     SelectCCD(usize),
+    /// Confirm form and produce `result`.
     Ok,
+    /// Close editor without applying changes.
     Cancel,
+    /// Request removal of the currently edited rule.
     Delete,
 }
 
 impl CustomProcessEditor {
+    /// Create editor state for a new rule or an existing rule.
+    ///
+    /// Existing values are copied into form fields. New rules start with all
+    /// cores selected so affinity can be optionally narrowed down.
     pub fn new(existing: Option<&CustomProcess>, num_cores: usize) -> Self {
+        // Option<T> ~= nullable/Maybe<T>; &T is a borrow (reference) without ownership transfer.
         let cp = existing.cloned().unwrap_or_else(|| CustomProcess::new(""));
         let editing_name = cp.name.clone();
         let affinity_enabled = cp.affinity.is_some();
         let priority_enabled = cp.priority.is_some();
-
         let mut core_checks = vec![false; num_cores];
         if let Some(ref aff) = cp.affinity {
+            // if let = pattern-match only the success shape; ref keeps borrowing instead of moving.
             for &c in &aff.core_list {
+                // &x in a pattern means "copy/deref the referenced value" (similar to reading by value).
                 if c < num_cores {
                     core_checks[c] = true;
                 }
             }
         } else {
-            core_checks.iter_mut().for_each(|c| *c = true);
+            core_checks.iter_mut().for_each(|c| *c = true); // |c| ... is a closure lambda; *c dereferences.
         }
 
         Self {
+            // Self = current type name (like using the class name inside a C# constructor).
             open: true,
             editing_name,
             name: cp.name,
@@ -80,8 +115,14 @@ impl CustomProcessEditor {
         }
     }
 
+    /// Apply one UI message to local editor state.
+    ///
+    /// This keeps all form logic in one place: toggles, quick-select helpers,
+    /// and final result construction on `Message::Ok`.
     pub fn update(&mut self, message: Message, _num_cores: usize) {
+        // &mut self = mutable receiver (roughly C# instance method mutating fields).
         match message {
+            // match is Rust's switch-expression; each arm uses pattern => result.
             Message::NameChanged(name) => self.name = name,
             Message::ToggleAffinity => self.affinity_enabled = !self.affinity_enabled,
             Message::TogglePriority => self.priority_enabled = !self.priority_enabled,
@@ -132,25 +173,30 @@ impl CustomProcessEditor {
             Message::Ok => {
                 let affinity = if self.affinity_enabled {
                     let cores: Vec<usize> = self
+                        // Vec<T> = growable List<T>.
                         .core_checks
                         .iter()
                         .enumerate()
-                        .filter_map(|(i, &c)| if c { Some(i) } else { None })
+                        .filter_map(|(i, &c)| if c { Some(i) } else { None }) // Some/None = has value / no value.
                         .collect();
+
                     Some(AffinityConfig::new(cores))
                 } else {
                     None
                 };
+
                 let priority: Option<ProcessPriority> = if self.priority_enabled {
                     Some(index_to_priority(self.priority_index))
                 } else {
                     None
                 };
+
                 self.result = Some(CustomProcess {
                     name: self.name.trim().to_string(),
                     affinity,
                     priority,
                 });
+
                 self.open = false;
             }
             Message::Cancel => self.open = false,
@@ -161,16 +207,21 @@ impl CustomProcessEditor {
         }
     }
 
+    /// Render the modal dialog and its scrollable form content.
+    ///
+    /// The core checklist is rendered as a wrapped row grid for readability,
+    /// and quick-select buttons mirror topology groupings (P/E cores, CCDs).
     pub fn view(&self) -> Element<'_, AppMessage> {
+        // '_ is an inferred lifetime; think "borrow valid for this returned UI tree".
         let title = if self.editing_name.is_empty() {
             "New Custom Process"
         } else {
             "Edit Custom Process"
         };
 
-        // Name field (editable only when creating)
         let name_row: Element<AppMessage> = if self.editing_name.is_empty() {
             row![
+                // row![] / column![] are macros (roughly builder DSL helpers).
                 text("Name:"),
                 text_input("exe name…", &self.name)
                     .on_input(|s| AppMessage::CustomProcessEditorMessage(Message::NameChanged(s)))
@@ -191,7 +242,6 @@ impl CustomProcessEditor {
             .into()
         };
 
-        // Affinity section
         let affinity_section = {
             let toggle = checkbox(self.affinity_enabled)
                 .label("Set CPU affinity")
@@ -211,6 +261,7 @@ impl CustomProcessEditor {
                 .spacing(5);
 
                 let topo = crate::core::topology::get_topology();
+
                 let quick_select =
                     if topo.is_hybrid() {
                         quick_select
@@ -227,7 +278,8 @@ impl CustomProcessEditor {
                 let quick_select = {
                     let mut row = quick_select;
                     for (i, _) in topo.get_ccd_groups().iter().enumerate() {
-                        row = row.push(button(text(format!("CCD {i}"))).on_press(
+                        let label = format!("CCD {}", i);
+                        row = row.push(button(text(label)).on_press(
                             AppMessage::CustomProcessEditorMessage(Message::SelectCCD(i)),
                         ));
                     }
@@ -237,6 +289,7 @@ impl CustomProcessEditor {
                 content = content.push(quick_select);
 
                 let procs = topo.processors();
+
                 let mut grid_rows = Column::new().spacing(4);
                 let mut current_row = Row::new().spacing(6);
                 let mut items_in_row = 0;
@@ -244,15 +297,16 @@ impl CustomProcessEditor {
                 for (i, checked) in self.core_checks.iter().enumerate() {
                     let lbl = if let Some(p) = procs.iter().find(|p| p.logical_index == i) {
                         match p.kind {
-                            crate::core::topology::CoreKind::Pcore => format!("P{i}"),
-                            crate::core::topology::CoreKind::Ecore => format!("E{i}"),
-                            _ => format!("{i}"),
+                            crate::core::topology::CoreKind::Pcore => format!("P{}", i),
+                            crate::core::topology::CoreKind::Ecore => format!("E{}", i),
+                            _ => format!("{}", i),
                         }
                     } else {
-                        format!("{i}")
+                        format!("{}", i)
                     };
 
                     let cb = checkbox(*checked).label(lbl).on_toggle(move |c| {
+                        // move captures i by value into the closure (like closing over a copied local).
                         AppMessage::CustomProcessEditorMessage(Message::CoreToggled(i, c))
                     });
 
@@ -265,16 +319,17 @@ impl CustomProcessEditor {
                         items_in_row = 0;
                     }
                 }
+
                 if items_in_row > 0 {
                     grid_rows = grid_rows.push(current_row);
                 }
 
                 content = content.push(grid_rows);
             }
+
             content
         };
 
-        // Priority section
         let priority_section = {
             let toggle = checkbox(self.priority_enabled)
                 .label("Set priority")
@@ -285,6 +340,7 @@ impl CustomProcessEditor {
             if self.priority_enabled {
                 let make_btn = |i: usize, lbl: &'static str| {
                     let selected = self.priority_index == i;
+
                     button(lbl)
                         .style(move |_, _| button::Style {
                             background: Some(Background::Color(if selected {
@@ -299,6 +355,7 @@ impl CustomProcessEditor {
                             Message::PriorityChanged(i),
                         ))
                 };
+
                 let priority_grid = column![
                     Row::new()
                         .spacing(5)
@@ -312,12 +369,13 @@ impl CustomProcessEditor {
                         .push(make_btn(5, PRIORITY_LABELS[5])),
                 ]
                 .spacing(5);
+
                 content = content.push(priority_grid);
             }
+
             content
         };
 
-        // Action buttons
         let name_ok = !self.name.trim().is_empty();
         let affinity_ok = !self.affinity_enabled || self.core_checks.iter().any(|&c| c);
 

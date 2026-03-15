@@ -1,3 +1,10 @@
+//! Configure tab UI and local message types.
+//!
+//! This module owns the "Configure" tab presentation only: group cards at the top,
+//! running/custom process pools at the bottom, and drag-and-drop between them.
+//! It does not mutate app state directly; controls emit [`Message`] values that are
+//! forwarded as `AppMessage::ConfigureMessage(...)` to the app-level update logic.
+
 use iced::font;
 use iced::widget::container::Style as ContainerStyle;
 use iced::widget::{
@@ -10,29 +17,40 @@ use crate::gui::drop_zone::DropZone;
 use crate::gui::widgets::{icon_button_content, process_pill};
 use crate::gui::{AppCache, Message as AppMessage};
 
+/// Maximum number of group cards in each grid row.
 const CARDS_PER_ROW: usize = 4;
 
+/// User intents emitted by controls inside the Configure tab.
+///
+/// These messages are local to this tab. The view wraps each one in
+/// `AppMessage::ConfigureMessage(...)` so the parent update loop can route it.
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Assign a process name to a group name.
+    /// Rust note for C#: this is a tuple-style enum case (payload values, no named fields).
     AssignProcess(String, String),
+    /// Open group editor (`None` new, `Some` edit).
+    /// `Option<T>` is Rust's nullable-like sum type (`Some(value)` or `None`).
     OpenGroupEditor(Option<String>),
-    /// Open ProcessEditor for a process already in a group (edit/reassign).
+    /// Open process editor (`Option<group_name>`, `process_name`).
     OpenProcessEditor(Option<String>, String),
-    /// Open ProcessEditor for a new process with no pre-selected group.
+    /// Open process editor with no preselected group.
     OpenProcessEditorGlobal,
+    /// Update running-process filter text.
     UpdateProcessFilter(String),
-    /// Open the custom process editor. `None` = create new, `Some(name)` = edit existing.
+    /// Open custom-process editor (`None` new, `Some` edit).
     OpenCustomProcessEditor(Option<String>),
-    /// A running-process pill started being dragged (deadband exceeded).
+    /// Drag operation started for this process name.
     DragStarted(String),
-    /// Pill dropped onto a group card.
+    /// Process dropped on group (`process_name`, `group_name`).
     DropOnGroup(String, String),
-    /// Pill dropped onto the Custom Processes panel — opens the editor with name pre-filled.
+    /// Process dropped on custom panel.
     DropOnCustom(String),
-    /// Pill dropped onto Running Processes — removes any group/custom assignment.
+    /// Process dropped on running panel.
     DropOnRunning(String),
 }
 
+/// Shared style for cards in this tab.
 fn card_style() -> ContainerStyle {
     ContainerStyle {
         background: Some(Background::Color(Color::from_rgb(0.12, 0.12, 0.12))),
@@ -45,13 +63,27 @@ fn card_style() -> ContainerStyle {
     }
 }
 
+/// Builds the Configure tab.
+///
+/// Layout overview:
+/// - Top action row for add/help actions.
+/// - Scrollable group grid (assignment targets).
+/// - Bottom row split into Running (left) and Custom (right) process panels.
+///
+/// Vertical sizing uses a 3:2 split (`FillPortion(3)` above `FillPortion(2)`),
+/// so the group editor area stays dominant while keeping both process pools visible.
 pub fn view<'a>(
+    // `'a` is a lifetime parameter: returned UI can borrow data for at most this scope.
     cache: &'a AppCache,
+    // `&T` is a shared borrow (roughly a read-only reference).
     dragging: Option<&'a str>,
     process_filter: &'a str,
 ) -> Container<'a, AppMessage> {
+    // Normalize once for case-insensitive matching.
     let running_set: std::collections::HashSet<String> =
+        // `::` is Rust's path separator (similar to C# namespace/type qualification).
         cache.running.iter().map(|s| s.to_lowercase()).collect();
+
     let assigned_names: std::collections::HashSet<String> = cache
         .assigned
         .iter()
@@ -61,6 +93,7 @@ pub fn view<'a>(
 
     let mut by_group: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
+
     for (proc, grp) in &cache.assigned {
         by_group
             .entry(grp.to_lowercase())
@@ -69,11 +102,10 @@ pub fn view<'a>(
     }
 
     let dropping = dragging.map(|s| s.to_string());
-
-    // ── Action bar ────────────────────────────────────────────────────────────
     let has_groups = !cache.groups.is_empty();
 
     let action_bar = row![
+        // `row![...]` is a macro call (`!`) that expands into widget-building code.
         button(text("Add Group").size(13))
             .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(None)))
             .padding([5, 10]),
@@ -95,7 +127,6 @@ pub fn view<'a>(
     .spacing(8)
     .align_y(Alignment::Center);
 
-    // ── Group cards ───────────────────────────────────────────────────────────
     let all_cards: Vec<iced::Element<'a, AppMessage>> = cache
         .groups
         .iter()
@@ -154,6 +185,7 @@ pub fn view<'a>(
                 .padding(8),
             )
             .width(Length::Fill)
+            // `move` captures referenced locals by value; `|_|` is a closure ignoring its input.
             .style(move |_| card_style());
 
             let gname_drop = gname.clone();
@@ -164,12 +196,13 @@ pub fn view<'a>(
         })
         .collect();
 
-    // Lay cards into rows of at most CARDS_PER_ROW; each card fills its share.
     let mut grid = Column::new().spacing(8);
     let mut iter = all_cards.into_iter();
+
     loop {
         let mut current_row = Row::new().spacing(8);
         let mut count = 0;
+
         while count < CARDS_PER_ROW {
             if let Some(card) = iter.next() {
                 current_row = current_row.push(card);
@@ -178,14 +211,16 @@ pub fn view<'a>(
                 break;
             }
         }
+
         if count == 0 {
             break;
         }
+
         grid = grid.push(current_row.width(Length::Fill));
     }
 
-    // ── Bottom panels ─────────────────────────────────────────────────────────
     let filter_lower = process_filter.to_lowercase();
+
     let unassigned: Vec<String> = cache
         .running
         .iter()
@@ -258,6 +293,7 @@ pub fn view<'a>(
             let drag_msg = AppMessage::ConfigureMessage(Message::DragStarted(name.clone()));
             let edit_msg =
                 AppMessage::ConfigureMessage(Message::OpenCustomProcessEditor(Some(name.clone())));
+
             col.push(
                 row![
                     DraggablePill::new(process_pill(name, false), drag_msg),
@@ -299,7 +335,7 @@ pub fn view<'a>(
         AppMessage::ConfigureMessage(Message::DropOnRunning(proc_name))
     });
 
-    // Minimum height enforced by wrapping in a container; panels grow beyond this.
+    // Keep the lower process panels at 2/5 of vertical space.
     let bottom_row = container(
         row![running_drop_zone, custom_drop_zone]
             .spacing(10)

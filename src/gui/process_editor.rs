@@ -1,47 +1,63 @@
+use crate::gui::Message as AppMessage;
 use iced::font;
 use iced::widget::{Row, Space, button, column, container, row, text, text_input};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
-
-use crate::gui::Message as AppMessage;
-
-// ─── Process editor dialog ────────────────────────────────────────────────────
-
-/// Modal dialog for adding a new process to a group or reassigning an existing one.
+/// Modal editor state for creating or editing one process-to-group assignment.
+///
+/// Modes are derived from `editing_process_name`:
+/// - add mode: empty original name, editable name input
+/// - edit mode: original name set, name shown read-only, remove action available
 pub struct ProcessEditor {
+    /// Whether the dialog is currently visible.
     pub open: bool,
 
-    /// The original process name when editing an existing assignment.
-    /// Empty when adding a new process.
+    /// Original process name in edit mode; empty in add mode.
     pub editing_process_name: String,
 
-    /// The value of the name text input.
+    /// Current value of the name input.
     pub process_name: String,
 
     /// Currently selected target group.
     pub selected_group: String,
 
-    /// All available group names to choose from.
+    /// All available group names.
     pub available_groups: Vec<String>,
 
-    /// Set to `Some((name, group))` when OK is pressed.
+    /// Output payload set when OK closes with valid values.
     pub result: Option<(String, String)>,
 
-    /// Set when the Remove button is pressed (edit mode only).
+    /// Set when Remove is pressed in edit mode.
     pub remove_requested: bool,
 }
 
+/// Local editor events produced by UI controls.
+///
+/// `view` maps widget events into these messages and wraps them as
+/// `AppMessage::ProcessEditorMessage(...)` for the parent update loop.
+// Rust note for C#: `#[derive(...)]` auto-implements listed traits for this type.
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Name input changed.
+    // Rust note for C#: `NameChanged(String)` is an enum variant with payload data.
     NameChanged(String),
+
+    /// Group selection changed.
     GroupSelected(String),
+
+    /// Confirm and close.
     Ok,
+
+    /// Cancel and close.
     Cancel,
+
+    /// Request removal in edit mode and close.
     Remove,
 }
 
 impl ProcessEditor {
-    /// Open for adding a new executable to `target_group`.
+    /// Opens in add mode.
     pub fn new_for_add(target_group: String, available_groups: Vec<String>) -> Self {
+        // Rust note for C#: `Self` means the current impl type (`ProcessEditor`).
         Self {
             open: true,
             editing_process_name: String::new(),
@@ -53,7 +69,7 @@ impl ProcessEditor {
         }
     }
 
-    /// Open for editing an existing process assignment.
+    /// Opens in edit mode.
     pub fn new_for_edit(
         process_name: String,
         current_group: String,
@@ -70,13 +86,21 @@ impl ProcessEditor {
         }
     }
 
+    /// Applies one editor message to local state.
+    ///
+    /// Closing behavior:
+    /// - `Ok`: validates values, stores `result`, then closes
+    /// - `Cancel`: closes without output
+    /// - `Remove`: flags `remove_requested`, then closes
     pub fn update(&mut self, msg: Message) {
+        // Rust note for C#: `match` is a switch-like exhaustive pattern matcher.
         match msg {
             Message::NameChanged(s) => self.process_name = s,
             Message::GroupSelected(g) => self.selected_group = g,
             Message::Ok => {
                 let name = self.process_name.trim().to_string();
                 if !name.is_empty() && !self.selected_group.is_empty() {
+                    // Rust note for C#: `Some(...)` is the present-value case of `Option<T>`.
                     self.result = Some((name, self.selected_group.clone()));
                 }
                 self.open = false;
@@ -89,27 +113,32 @@ impl ProcessEditor {
         }
     }
 
+    /// Builds the modal overlay for the current mode.
+    // Rust note for C#: `Element<'_, T>` includes a lifetime; `'_` asks compiler to infer it.
     pub fn view(&self) -> Element<'_, AppMessage> {
         let is_editing = !self.editing_process_name.is_empty();
+        // Rust note for C#: `if` is an expression here and returns the chosen string.
         let title = if is_editing {
             "Configure Process"
         } else {
             "Add Process"
         };
 
-        // ── Name row ──────────────────────────────────────────────────────────
+        // Name field differs by mode: editable in add mode, read-only in edit mode.
         let name_widget: Element<AppMessage> = if is_editing {
-            text(self.process_name.clone())
+            text(self.process_name.as_str())
                 .size(14)
                 .color(Color::from_rgb(0.86, 0.86, 0.86))
                 .into()
         } else {
             text_input("exe name…", &self.process_name)
+                // Rust note for C#: `|s| ...` is a closure (lambda); type is inferred.
                 .on_input(|s| AppMessage::ProcessEditorMessage(Message::NameChanged(s)))
                 .width(Length::Fill)
                 .into()
         };
 
+        // Rust note for C#: `row![...]` is a macro call (`!`) that expands at compile time.
         let name_row = row![
             text("Name:").size(13).color(Color::from_rgb(0.7, 0.7, 0.7)),
             name_widget,
@@ -117,33 +146,36 @@ impl ProcessEditor {
         .spacing(10)
         .align_y(Alignment::Center);
 
-        // ── Group selection ───────────────────────────────────────────────────
-        let group_buttons =
-            self.available_groups
-                .iter()
-                .cloned()
-                .fold(Row::new().spacing(6), |row, gname| {
-                    let is_selected = gname == self.selected_group;
-                    row.push(
-                        button(text(gname.clone()).size(12))
-                            .on_press(AppMessage::ProcessEditorMessage(Message::GroupSelected(
-                                gname,
-                            )))
-                            .style(move |_, _| button::Style {
-                                background: Some(Background::Color(if is_selected {
-                                    Color::from_rgb(0.2, 0.4, 0.8)
-                                } else {
-                                    Color::from_rgb(0.22, 0.22, 0.22)
-                                })),
-                                text_color: Color::WHITE,
-                                border: Border {
-                                    radius: 4.0.into(),
-                                    ..Default::default()
-                                },
+        // Clone `gname` for label and message payload: iced button handlers own data.
+        let group_buttons = self
+            .available_groups
+            .iter()
+            .cloned()
+            // Rust note for C#: `fold(init, |acc, x| ...)` reduces items into one value.
+            .fold(Row::new().spacing(6), |row, gname| {
+                let is_selected = gname == self.selected_group;
+                row.push(
+                    button(text(gname.clone()).size(12))
+                        .on_press(AppMessage::ProcessEditorMessage(Message::GroupSelected(
+                            gname,
+                        )))
+                        // Rust note for C#: `move` makes the closure capture by value.
+                        .style(move |_, _| button::Style {
+                            background: Some(Background::Color(if is_selected {
+                                Color::from_rgb(0.2, 0.4, 0.8)
+                            } else {
+                                Color::from_rgb(0.22, 0.22, 0.22)
+                            })),
+                            text_color: Color::WHITE,
+                            border: Border {
+                                radius: 4.0.into(),
+                                // Rust note for C#: `..Default::default()` fills remaining fields.
                                 ..Default::default()
-                            }),
-                    )
-                });
+                            },
+                            ..Default::default()
+                        }),
+                )
+            });
 
         let group_section = column![
             text("Assign to group:")
@@ -153,7 +185,7 @@ impl ProcessEditor {
         ]
         .spacing(6);
 
-        // ── Action buttons ────────────────────────────────────────────────────
+        // Action row: OK/Cancel in both modes, Remove only in edit mode.
         let can_ok = !self.process_name.trim().is_empty() && !self.selected_group.is_empty();
 
         let ok_btn = button(text("OK").size(13))
@@ -177,6 +209,7 @@ impl ProcessEditor {
 
         let left_actions = row![ok_btn, cancel_btn].spacing(8);
 
+        // Edit mode adds a right-aligned Remove button.
         let actions_row: Row<AppMessage> = if is_editing {
             row![
                 left_actions,
@@ -198,7 +231,6 @@ impl ProcessEditor {
             row![left_actions]
         };
 
-        // ── Dialog container ──────────────────────────────────────────────────
         let dialog_content = column![
             text(title).size(16).font(Font {
                 weight: font::Weight::Bold,
@@ -224,7 +256,7 @@ impl ProcessEditor {
                     ..Default::default()
                 });
 
-        // Full-screen dimmed backdrop with dialog centred inside
+        // Full-screen dimmed backdrop with centered dialog.
         container(dialog)
             .center_x(Length::Fill)
             .center_y(Length::Fill)

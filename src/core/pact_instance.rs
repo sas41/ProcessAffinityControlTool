@@ -6,18 +6,30 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub type ConfigUpdatedCallback = Box<dyn FnMut() + Send>;
+// Rust note for C# readers: `type` creates an alias; `Box<...>` is a heap-owned pointer,
+// `dyn FnMut()` is a trait object (roughly an interface callback), and `+ Send` adds a trait bound.
 
+// High-level facade used by UI/CLI layers.
+// Owns runtime scanning and the persisted user config lifecycle.
 pub struct PACTInstance {
+    // Shared runtime engine: scans processes and applies affinity policy.
     pub pact_process_overwatch: ProcessOverwatch,
+    // Background scanner handle, present only while scanning is active.
+    // Rust note for C# readers: `Option<T>` is nullable-like (`Some(value)` or `None`).
     pub scan_handler: Option<ScanHandler>,
+    // Local listeners notified after config-affecting operations persist.
     config_updated_callbacks: Vec<Mutex<Option<ConfigUpdatedCallback>>>,
 }
 
 impl PACTInstance {
+    // Rust note for C# readers: `&self` is an immutable borrowed receiver; `&mut self` is mutable.
     pub fn new() -> Self {
+        // Startup boundary: load persisted config, start runtime state from it,
+        // request a refresh, then persist normalized defaults/migrations.
         let user_config = Self::read_config();
         let pact_process_overwatch = ProcessOverwatch::new(user_config);
         pact_process_overwatch.request_fresh_scan();
+        // Clone creates an owned snapshot so file IO does not hold config locks.
         Self::save_config(&pact_process_overwatch.user_config_lock().clone());
         Self {
             pact_process_overwatch,
@@ -26,22 +38,24 @@ impl PACTInstance {
         }
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────
+    // Scanner lifecycle.
 
     pub fn start_scan_handler(&mut self) {
         let interval = self.pact_process_overwatch.scan_interval();
+        // Clone is a cheap shared handle for the background worker thread.
         let mut h = ScanHandler::new(self.pact_process_overwatch.clone(), interval);
         h.start();
         self.scan_handler = Some(h);
     }
 
     pub fn stop_scan_handler(&mut self) {
+        // Rust note for C# readers: `if let Some(x) = ...` pattern-matches only the success shape.
         if let Some(mut h) = self.scan_handler.take() {
             h.stop();
         }
     }
 
-    // ── Overwatch control ─────────────────────────────────────────────────
+    // Runtime toggles.
 
     pub fn toggle_process_overwatch(&mut self) -> bool {
         let s = self.pact_process_overwatch.toggle_process_overwatch();
@@ -56,15 +70,19 @@ impl PACTInstance {
     }
 
     pub fn request_fresh_scan(&mut self) {
+        // Runtime refresh only; does not persist config on its own.
         self.pact_process_overwatch.request_fresh_scan();
     }
 
-    // ── Config persistence ────────────────────────────────────────────────
+    // Config persistence boundaries.
 
     pub fn read_config() -> PACTConfig {
+        // Disk -> memory boundary. Fall back to defaults on any read/parse error.
         let path = Self::config_path();
         if path.exists() {
+            // Rust note for C# readers: `if let Ok(v) = ...` unwraps `Result` only when it is `Ok`.
             if let Ok(json) = fs::read_to_string(&path) {
+                // Rust note for C# readers: `::<PACTConfig>` is a turbofish explicit generic type.
                 if let Ok(cfg) = serde_json::from_str::<PACTConfig>(&json) {
                     return cfg;
                 }
@@ -74,6 +92,7 @@ impl PACTInstance {
     }
 
     pub fn save_config(config: &PACTConfig) {
+        // Memory -> disk boundary. Best-effort write; callers keep runtime state.
         let path = Self::config_path();
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
@@ -84,8 +103,10 @@ impl PACTInstance {
     }
 
     pub fn import_config(&mut self, fullpath: &str) {
+        // External file import: replace in-memory config, rescan, then persist.
         if let Ok(json) = fs::read_to_string(fullpath) {
             if let Ok(cfg) = serde_json::from_str::<PACTConfig>(&json) {
+                // Rust note for C# readers: leading `*` dereferences before assignment.
                 *self.pact_process_overwatch.user_config_lock_mut() = cfg;
                 self.pact_process_overwatch.request_fresh_scan();
                 self.persist_and_notify();
@@ -94,6 +115,8 @@ impl PACTInstance {
     }
 
     pub fn export_config(&self, fullpath: &str) {
+        // Export snapshot only; does not mutate runtime state or canonical config path.
+        // Clone detaches serialization from the lock-protected config.
         let cfg = self.pact_process_overwatch.user_config_lock().clone();
         if let Ok(json) = serde_json::to_string_pretty(&cfg) {
             let _ = fs::write(fullpath, json);
@@ -101,23 +124,25 @@ impl PACTInstance {
     }
 
     pub fn reset_config(&mut self) {
+        // Reset in-memory config first, then rescan, persist, and notify listeners.
         *self.pact_process_overwatch.user_config_lock_mut() = PACTConfig::default();
         self.pact_process_overwatch.request_fresh_scan();
         self.persist_and_notify();
     }
 
     fn config_path() -> PathBuf {
+        // Rust note for C# readers: `#[cfg(...)]` includes code at compile time by target platform.
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
-            // Linux: ~/.config/pact/config.json       (XDG_CONFIG_HOME honoured)
-            // macOS: ~/Library/Application Support/pact/config.json
+            // Linux: ~/.config/pact/config.json (honors XDG_CONFIG_HOME).
+            // macOS: ~/Library/Application Support/pact/config.json.
             let base = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()));
             base.join("pact").join("config.json")
         }
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
-            // <exe directory>/Config/config.json  (Windows, etc.)
+            // Windows and others: <exe directory>/Config/config.json.
             let mut p = std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|p| p.to_path_buf()))
@@ -129,6 +154,8 @@ impl PACTInstance {
     }
 
     fn persist_and_notify(&self) {
+        // Standard mutation flow finalizer: persist durable state, then broadcast.
+        // Clone keeps callback execution outside config lock ownership.
         Self::save_config(&self.pact_process_overwatch.user_config_lock().clone());
         self.fire_config_updated();
     }
@@ -144,13 +171,16 @@ impl PACTInstance {
     }
 
     pub fn add_config_updated_callback<F: FnMut() + Send + 'static>(&mut self, cb: F) {
+        // Rust note for C# readers: `'static` means no borrowed data shorter than program lifetime.
         self.config_updated_callbacks
             .push(Mutex::new(Some(Box::new(cb))));
     }
 
-    // ── Group CRUD ────────────────────────────────────────────────────────
+    // Group CRUD (mutations follow: config change -> rescan -> persist/notify).
 
-    /// Add a new group.  Returns false if a group with that name already exists.
+    /// Adds a new group.
+    ///
+    /// Returns `false` if a group with that name already exists.
     pub fn add_group(&mut self, group: ProcessGroup) -> bool {
         let ok = self
             .pact_process_overwatch
@@ -163,7 +193,7 @@ impl PACTInstance {
         ok
     }
 
-    /// Update an existing group (matched by `old_name`).
+    /// Updates a group matched by `old_name`.
     pub fn update_group(&mut self, old_name: &str, new_group: ProcessGroup) -> bool {
         let ok = self
             .pact_process_overwatch
@@ -176,7 +206,9 @@ impl PACTInstance {
         ok
     }
 
-    /// Remove a group by name; all its process assignments are also removed.
+    /// Removes a group by name.
+    ///
+    /// Also clears its process assignments.
     pub fn remove_group(&mut self, name: &str) -> bool {
         let ok = self
             .pact_process_overwatch
@@ -189,20 +221,17 @@ impl PACTInstance {
         ok
     }
 
-    /// Delete a group with the correct process-handoff behaviour:
+    /// Deletes a group and hands off or restores assigned processes.
     ///
-    /// 1. Collect all process names explicitly assigned to this group.
-    /// 2. If a default group exists, reassign them all to it (they will be
-    ///    picked up by the next scan with the default group's settings).
-    /// 3. If there is no default group, restore the original affinity/priority
-    ///    of every currently-running process that belongs to the group, then
-    ///    remove their explicit assignments so they are left unmanaged.
-    /// 4. Remove the group itself (this also clears any remaining assignments).
+    /// - If a different default group exists, reassigns all assigned processes.
+    /// - Otherwise restores running processes to original state and unassigns them.
+    /// - Removes the group and requests a fresh scan.
     pub fn delete_group(&mut self, name: &str) {
-        // 1. Snapshot the group's process list before we mutate anything.
+        // Snapshot names first to avoid holding mutable config locks too long.
         let procs_in_group: Vec<String> = self.get_processes_in_group(name);
 
-        // 2. Check for a default group (must not be the group being deleted).
+        // Use default group only when it is not the group being deleted.
+        // Clone here keeps only the group name after lock scope ends.
         let default_group_name: Option<String> = {
             let cfg = self.pact_process_overwatch.user_config_lock();
             cfg.default_group()
@@ -211,24 +240,24 @@ impl PACTInstance {
         };
 
         if let Some(ref default_name) = default_group_name {
-            // Reassign all processes to the default group.
+            // Reassign all captured processes in-memory.
             let mut cfg = self.pact_process_overwatch.user_config_lock_mut();
             for proc_name in &procs_in_group {
                 cfg.assign_process(proc_name, default_name);
             }
         } else {
-            // No default group — restore original state for running processes.
+            // No fallback group: restore running processes, then clear assignments.
             let names_set: std::collections::HashSet<String> = procs_in_group.into_iter().collect();
             self.pact_process_overwatch
                 .restore_processes_by_name(&names_set);
-            // Remove their explicit assignments so the next scan ignores them.
+            // Remove explicit assignments so the next scan ignores them.
             let mut cfg = self.pact_process_overwatch.user_config_lock_mut();
             for proc_name in &names_set {
                 cfg.unassign_process(proc_name);
             }
         }
 
-        // 4. Remove the group (also clears any remaining orphaned assignments).
+        // Final in-memory cleanup, then trigger standard rescan/persist flow.
         self.pact_process_overwatch
             .user_config_lock_mut()
             .remove_group(name);
@@ -236,17 +265,18 @@ impl PACTInstance {
         self.persist_and_notify();
     }
 
-    /// Return a snapshot of all groups.
+    /// Returns a snapshot of all groups.
     pub fn get_groups(&self) -> Vec<ProcessGroup> {
+        // Clone returns owned data so callers cannot mutate internal state.
         self.pact_process_overwatch
             .user_config_lock()
             .groups
             .clone()
     }
 
-    // ── Process assignment CRUD ───────────────────────────────────────────
+    // Process assignment CRUD.
 
-    /// Assign a process to a named group.
+    /// Assigns a process to a group.
     pub fn assign_process(&mut self, process_name: &str, group_name: &str) -> bool {
         let ok = self
             .pact_process_overwatch
@@ -259,7 +289,7 @@ impl PACTInstance {
         ok
     }
 
-    /// Remove a process's explicit group assignment.
+    /// Removes a process's explicit group assignment.
     pub fn unassign_process(&mut self, process_name: &str) {
         self.pact_process_overwatch
             .user_config_lock_mut()
@@ -268,9 +298,11 @@ impl PACTInstance {
         self.persist_and_notify();
     }
 
-    /// All process names that have an explicit assignment, sorted, with their group name.
+    /// Returns sorted explicit assignments as `(process_name, group_name)`.
     pub fn get_assigned_processes(&self) -> Vec<(String, String)> {
         let cfg = self.pact_process_overwatch.user_config_lock();
+        // Clone map entries into an owned vector for UI-friendly sorting/use.
+        // Rust note for C# readers: `|(p, g)| ...` is a closure; `|...|` are its parameters.
         let mut v: Vec<(String, String)> = cfg
             .process_assignments
             .iter()
@@ -280,7 +312,7 @@ impl PACTInstance {
         v
     }
 
-    /// Processes assigned to a specific group, sorted.
+    /// Returns sorted process names assigned to `group_name`.
     pub fn get_processes_in_group(&self, group_name: &str) -> Vec<String> {
         let lower = group_name.to_lowercase();
         let cfg = self.pact_process_overwatch.user_config_lock();
@@ -294,9 +326,10 @@ impl PACTInstance {
         v
     }
 
-    // ── Custom process CRUD ───────────────────────────────────────────────
+    // Custom process CRUD.
 
     pub fn get_custom_processes(&self) -> Vec<CustomProcess> {
+        // Clone returns an immutable snapshot to callers.
         self.pact_process_overwatch
             .user_config_lock()
             .custom_processes
@@ -335,7 +368,7 @@ impl PACTInstance {
         self.persist_and_notify();
     }
 
-    // ── Running / live process info ───────────────────────────────────────
+    // Running process info (read-only snapshots).
 
     pub fn get_all_running_processes(&self) -> Vec<String> {
         self.pact_process_overwatch.running_processes()
@@ -345,7 +378,7 @@ impl PACTInstance {
         self.pact_process_overwatch.protected_process_names()
     }
 
-    /// Running processes NOT explicitly assigned to any group.
+    /// Returns running processes without explicit group assignments.
     pub fn get_unassigned_running_processes(&self) -> Vec<String> {
         let running = self.get_all_running_processes();
         let cfg = self.pact_process_overwatch.user_config_lock();
@@ -355,7 +388,7 @@ impl PACTInstance {
             .collect()
     }
 
-    // ── Auto mode ─────────────────────────────────────────────────────────
+    // Auto mode config.
 
     pub fn get_auto_mode_launchers(&self) -> Vec<String> {
         let mut v: Vec<String> = self

@@ -7,9 +7,9 @@ use crate::core::process_config::{AffinityConfig, ProcessGroup};
 use crate::gui::Message as AppMessage;
 use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
 
-// ─── ProcessGroup default constructor ────────────────────────────────────────
-
 pub trait ProcessGroupExt {
+    // `trait` is Rust's interface contract (like a C# interface).
+    /// Local helper used by the editor when creating a new group draft.
     fn default_new() -> ProcessGroup;
 }
 
@@ -25,37 +25,36 @@ impl ProcessGroupExt for ProcessGroup {
     }
 }
 
-// ─── Group editor dialog ──────────────────────────────────────────────────────
-
-/// Editable working copy of a ProcessGroup, displayed as a floating window.
+/// Modal editor state for creating/updating one `ProcessGroup`.
+///
+/// Responsibility split:
+/// - `view()` renders controls from this state and emits editor `Message`s.
+/// - `update()` applies those messages and records the final intent (`result`/delete/cancel).
+///
+/// The parent screen owns persistence; this type only manages in-dialog edits.
 pub struct GroupEditor {
     pub open: bool,
 
-    /// Name of the group being edited; empty when creating a new group.
     pub editing_name: String,
 
-    // ── Editable fields ───────────────────────────────────────────────────
     pub name: String,
     pub is_blacklist: bool,
     pub is_default: bool,
 
-    // ── Affinity state ────────────────────────────────────────────────────
     pub affinity_enabled: bool,
-    pub core_checks: Vec<bool>, // one entry per logical core
+    // One checkbox entry per logical core index.
+    pub core_checks: Vec<bool>,
 
-    // ── Priority state ────────────────────────────────────────────────────
     pub priority_enabled: bool,
     pub priority_index: usize,
 
-    /// Populated when OK is pressed; consumed by the caller.
     pub result: Option<ProcessGroup>,
 
-    /// Set to true when the Delete button is pressed; consumed by the caller.
     pub delete_requested: bool,
 }
 
-// Messages for the Group Editor
 #[derive(Debug, Clone)]
+/// UI events produced by `GroupEditor::view()` and consumed by `GroupEditor::update()`.
 pub enum Message {
     NameChanged(String),
     ToggleDefault,
@@ -75,21 +74,32 @@ pub enum Message {
 }
 
 impl GroupEditor {
+    /// Builds an editor from an existing group or a new empty draft.
+    ///
+    /// Selection behavior:
+    /// - Existing affinity selects only listed cores.
+    /// - No affinity defaults to all cores selected in the UI.
     pub fn new(group: Option<&ProcessGroup>, num_cores: usize) -> Self {
+        // `Option<T>` is Rust's nullable wrapper: `Some(value)` or `None`.
         let g = group.cloned().unwrap_or_else(ProcessGroup::default_new);
+        // `unwrap_or_else(f)` calls `f` only when the option is `None` (lazy fallback).
         let editing_name = g.name.clone();
         let affinity_enabled = g.affinity.is_some();
         let priority_enabled = g.priority.is_some();
 
+        // `vec![x; n]` builds a vector with `n` repeated copies of `x`.
         let mut core_checks = vec![false; num_cores];
+        // `if let` pattern-matches only one case and skips the rest.
         if let Some(ref aff) = g.affinity {
+            // `ref` borrows in a pattern (avoid moving out of `g.affinity`).
             for &c in &aff.core_list {
+                // `&c` destructures a reference and copies the inner `usize`.
                 if c < num_cores {
                     core_checks[c] = true;
                 }
             }
         } else {
-            // Default all cores on so the user can enable affinity immediately.
+            // `|c| *c = true` is closure syntax; `*c` dereferences `&mut bool`.
             core_checks.iter_mut().for_each(|c| *c = true);
         }
 
@@ -108,7 +118,14 @@ impl GroupEditor {
         }
     }
 
+    /// Applies one editor event to local dialog state.
+    ///
+    /// Message flow (high level):
+    /// 1) `view()` emits `Message` wrapped as `AppMessage::GroupEditorMessage`.
+    /// 2) Parent routes it here.
+    /// 3) `Ok` stores `result`, `Cancel` just closes, `Delete` sets `delete_requested`.
     pub fn update(&mut self, message: Message, _num_cores: usize) {
+        // `match` is a value/enum switch with exhaustive pattern handling.
         match message {
             Message::NameChanged(name) => self.name = name,
             Message::ToggleDefault => {
@@ -161,6 +178,7 @@ impl GroupEditor {
                 let topo = crate::core::topology::get_topology();
                 let ccds = topo.get_ccd_groups();
                 if let Some(grp) = ccds.get(index) {
+                    // Quick-select actions replace the previous selection, not merge with it.
                     self.core_checks.iter_mut().for_each(|c| *c = false);
                     for &idx in grp {
                         if idx < self.core_checks.len() {
@@ -170,11 +188,13 @@ impl GroupEditor {
                 }
             }
             Message::Ok => {
+                // Blacklist groups are match-only filters; they do not apply affinity/priority.
                 let affinity = if self.affinity_enabled && !self.is_blacklist {
                     let cores: Vec<usize> = self
                         .core_checks
                         .iter()
                         .enumerate()
+                        // `filter_map` keeps entries by returning `Some`, drops with `None`.
                         .filter_map(|(i, &c)| if c { Some(i) } else { None })
                         .collect();
                     Some(AffinityConfig::new(cores))
@@ -206,13 +226,14 @@ impl GroupEditor {
     }
 
     pub fn view(&self, _num_cores: usize) -> Element<'_, AppMessage> {
+        // `'_` is an inferred lifetime placeholder (borrowed UI tree tied to `&self`).
         let title = if self.editing_name.is_empty() {
             "New Group"
         } else {
             "Edit Group"
         };
 
-        // Group name field
+        // `row![...]` / `column![...]` are macros (`!`) that build widget lists.
         let name_row = row![
             text("Name:"),
             text_input("", &self.name)
@@ -221,7 +242,6 @@ impl GroupEditor {
         .spacing(10)
         .align_y(Alignment::Center);
 
-        // Flags
         let flags_row = row![
             checkbox(self.is_default)
                 .label("Default group")
@@ -233,7 +253,6 @@ impl GroupEditor {
         ]
         .spacing(10);
 
-        // Affinity section
         let affinity_section = {
             let toggle = checkbox(self.affinity_enabled)
                 .label("Set CPU affinity")
@@ -242,7 +261,6 @@ impl GroupEditor {
             let mut content = Column::new().spacing(10).push(toggle);
 
             if self.affinity_enabled && !self.is_blacklist {
-                // Quick select buttons
                 let quick_select = row![
                     button("All").on_press(AppMessage::GroupEditorMessage(Message::SelectAllCores)),
                     button("None")
@@ -278,13 +296,13 @@ impl GroupEditor {
 
                 content = content.push(quick_select);
 
-                // Core checkbox grid (8 per row)
                 let procs = topo.processors();
                 let mut grid_rows = Column::new().spacing(4);
                 let mut current_row = Row::new().spacing(6);
                 let mut items_in_row = 0;
 
                 for (i, checked) in self.core_checks.iter().enumerate() {
+                    // Prefix core labels when topology can distinguish performance/efficiency cores.
                     let lbl = if let Some(p) = procs.iter().find(|p| p.logical_index == i) {
                         match p.kind {
                             crate::core::topology::CoreKind::Pcore => format!("P{i}"),
@@ -296,6 +314,7 @@ impl GroupEditor {
                     };
 
                     let checkbox = checkbox(*checked).label(lbl).on_toggle(move |c| {
+                        // `move` captures `i` by value so each closure keeps its own index.
                         AppMessage::GroupEditorMessage(Message::CoreToggled(i, c))
                     });
 
@@ -317,7 +336,6 @@ impl GroupEditor {
             content
         };
 
-        // Priority section
         let priority_section = {
             let toggle = checkbox(self.priority_enabled)
                 .label("Set priority")
@@ -336,6 +354,7 @@ impl GroupEditor {
                                 Color::from_rgb(0.3, 0.3, 0.3)
                             })),
                             text_color: Color::WHITE,
+                            // `..Default::default()` fills remaining fields from defaults.
                             ..Default::default()
                         })
                         .on_press(AppMessage::GroupEditorMessage(Message::PriorityChanged(i)))
@@ -358,7 +377,6 @@ impl GroupEditor {
             content
         };
 
-        // Action buttons
         let name_ok = !self.name.trim().is_empty();
         let affinity_ok = !self.affinity_enabled || self.core_checks.iter().any(|&c| c);
 

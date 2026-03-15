@@ -1,3 +1,4 @@
+// Status tab UI.
 use iced::widget::{
     Column, Row, Space, button, column, container, progress_bar, row, scrollable, text,
 };
@@ -17,22 +18,25 @@ pub enum Message {
     RequestFreshScan,
 }
 
+// `'a` is a lifetime parameter (roughly: how long borrowed data stays valid),
+// similar in intent to C# reference-safety constraints but checked at compile time.
 pub fn view<'a>(
     cache: &'a AppCache,
     topo_view: &'a TopologyView,
     num_cores: usize,
 ) -> container::Container<'a, AppMessage> {
-    // ── Top control bar ───────────────────────────────────────────────────────
-    // Pleasant green / red for scanner; green / neutral for auto mode.
+    // Button colors encode runtime state at a glance.
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
     const RED: Color = Color::from_rgb(0.72, 0.18, 0.18);
     const GREY: Color = Color::from_rgb(0.22, 0.22, 0.28);
 
+    // `if` is an expression in Rust, so it directly returns a value for `let`.
     let scanner_col = if cache.is_scanner_active { GREEN } else { RED };
     let auto_col = if cache.is_auto_mode { GREEN } else { GREY };
 
     let scanner_btn = button(
         container(
+            // `row![...]` is a macro (`!`) that expands into widget-building code.
             row![
                 text(if cache.is_scanner_active {
                     "Pause"
@@ -52,6 +56,7 @@ pub fn view<'a>(
         .width(Length::Fill)
         .center_x(Length::Fill),
     )
+    // `Enum::Variant(...)` is namespaced variant construction (like C# `Type.Member`).
     .on_press(AppMessage::StatusMessage(Message::ToggleScanner))
     .width(Length::Fixed(120.0))
     .style(colored_button_style(scanner_col));
@@ -101,7 +106,8 @@ pub fn view<'a>(
     ]
     .align_y(Alignment::Center);
 
-    // ── Stats ─────────────────────────────────────────────────────────────────
+    // "Assigned" means a currently running process name that appears in
+    // either a group assignment or a custom process entry.
     let assigned_count = {
         let managed_names: std::collections::HashSet<&str> = cache
             .assigned
@@ -109,6 +115,7 @@ pub fn view<'a>(
             .map(|(n, _)| n.as_str())
             .chain(cache.custom_processes.iter().map(|cp| cp.name.as_str()))
             .collect();
+
         cache
             .running
             .iter()
@@ -116,6 +123,11 @@ pub fn view<'a>(
             .count()
     };
 
+    // Top counters summarize what the scanner sees right now:
+    // - Total: all visible running process names.
+    // - Assigned: running names that map to configured management rules.
+    // - Inaccessible: processes skipped due to permission limits.
+    // - Groups: configured process groups available for assignment.
     let stats_row = row![
         stat_badge("Total", cache.running.len(), Color::from_rgb(0.5, 0.8, 1.0)),
         Space::new().width(12.0),
@@ -135,25 +147,27 @@ pub fn view<'a>(
     ]
     .align_y(Alignment::Center);
 
-    // ── CPU bar ───────────────────────────────────────────────────────────────
     let cpu_bar = row![
         text("CPU Total:").size(14).font(iced::Font {
             weight: iced::font::Weight::Bold,
+            // `..Default::default()` fills remaining struct fields from defaults.
             ..Default::default()
         }),
+        // `a..=b` is an inclusive range (`b` is included).
         progress_bar(0.0..=100.0, cache.cpu_stats.global).length(Length::Fixed(300.0)),
         text(format!("{:.0}%", cache.cpu_stats.global)).size(13),
     ]
     .align_y(Alignment::Center)
     .spacing(10);
 
-    // ── Topology diagram ──────────────────────────────────────────────────────
+    // Precompute core -> group for fast topology coloring and badges.
     let core_group_map = build_core_group_map(&cache.groups, num_cores);
 
     let topology_elements: Vec<Element<AppMessage>> = topo_view
         .groups
         .iter()
         .enumerate()
+        // `|...|` starts a closure (lambda), similar to C# `(...) => ...`.
         .map(|(gi, topo_group)| {
             draw_topology_group(
                 topo_group,
@@ -164,9 +178,12 @@ pub fn view<'a>(
         })
         .collect();
 
+    // Topology cards are paired per row to keep density readable
+    // on typical window widths while still stacking cleanly.
     let topology_widget = container({
         let mut elements = topology_elements.into_iter();
         let mut rows = Column::new().spacing(10);
+
         while let Some(first) = elements.next() {
             let mut row = Row::new().spacing(10);
             row = row.push(first);
@@ -183,12 +200,15 @@ pub fn view<'a>(
         ..Default::default()
     });
 
-    // ── Legend ────────────────────────────────────────────────────────────────
     let mut legend_row = Row::new().spacing(10).align_y(Alignment::Center);
+
     legend_row = legend_row.push(color_swatch(
         Color::from_rgb(0.31, 0.31, 0.31),
         "No group".to_string(),
     ));
+
+    // Legend mirrors group colors used in the topology cards.
+    // Prefixes: [BL] blacklist group, [D] default fallback group.
     for (gi, g) in cache.groups.iter().enumerate() {
         let lbl = if g.is_blacklist {
             format!("[BL] {}", g.name)

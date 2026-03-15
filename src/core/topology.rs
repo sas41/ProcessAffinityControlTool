@@ -1,3 +1,4 @@
+// Rust `::` is namespace access (like C# `.`), and `{...}` groups imports from one path.
 use hwlocality::{
     object::{attributes::ObjectAttributes, types::ObjectType},
     topology::Topology,
@@ -6,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-// ─── CoreKind ─────────────────────────────────────────────────────────────────
+// Coarse core-class model used by UI/presets.
+// We intentionally keep this small (P/E/Unknown) because hwloc detail varies by CPU/vendor.
 
+// `#[derive(...)]` asks the compiler to auto-implement standard traits (roughly like generated boilerplate interfaces/methods in C#).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoreKind {
     Unknown,
@@ -15,13 +18,14 @@ pub enum CoreKind {
     Ecore,
 }
 
-// ─── TopologyPreset ───────────────────────────────────────────────────────────
+// High-level selection presets exposed to callers.
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TopologyPreset {
     PerformanceCores,
     EfficiencyCores,
+    // `CCD(usize)` is a tuple variant: enum case carrying data (similar to a C# discriminated-union case with payload).
     CCD(usize),
     NUMANode(usize),
     AllCores,
@@ -29,7 +33,7 @@ pub enum TopologyPreset {
     HybridEfficiency,
 }
 
-// ─── LogicalProcessorInfo ─────────────────────────────────────────────────────
+// Stable per-logical-CPU record built from hwloc plus Linux sysfs.
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -44,9 +48,7 @@ pub struct LogicalProcessorInfo {
     pub max_freq_khz: u64,
 }
 
-// ─── Cache entry ──────────────────────────────────────────────────────────────
-
-/// One cache level's size (bytes) and level number.
+/// Cache level and size in bytes.
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
     pub level: u8,
@@ -59,7 +61,7 @@ impl CacheEntry {
     }
 }
 
-// ─── TopologyView structs ─────────────────────────────────────────────────────
+// Read-only view models consumed by presentation code.
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -92,14 +94,14 @@ pub struct TopologyView {
     pub groups: Vec<TopLevelGroup>,
 }
 
-// ─── CpuTopology ─────────────────────────────────────────────────────────────
+// Normalized topology snapshot used across the app.
 
 #[derive(Debug, Default)]
 pub struct CpuTopology {
     processors: Vec<LogicalProcessorInfo>,
-    /// Per-core private caches keyed by physical_core_index.
+    /// Private caches keyed by dense physical-core index used in this module.
     core_private_caches: HashMap<usize, Vec<CacheEntry>>,
-    /// Shared caches keyed by CCD (Die) logical index.
+    /// Shared caches keyed by die logical index (`-1` means package-level fallback).
     ccd_shared_caches: HashMap<isize, Vec<CacheEntry>>,
 }
 
@@ -112,19 +114,22 @@ impl CpuTopology {
     pub fn discover() -> Self {
         let mut topology = Self::default();
 
+        // `match` is expression-based branching; each arm must return a compatible type.
         let topo = match Topology::new() {
             Ok(t) => t,
             Err(_) => return topology,
         };
 
-        // ── PU list ───────────────────────────────────────────────────────
+        // hwloc PUs are logical CPUs (hardware threads). Sort for deterministic output.
         let mut logical_processors: Vec<_> = topo.objects_with_type(ObjectType::PU).collect();
+        // `|obj| ...` is a closure/lambda parameter list.
         logical_processors.sort_by_key(|obj| obj.logical_index());
 
-        // ── Physical core index map ───────────────────────────────────────
+        // Map hwloc core logical IDs to dense 0..N indices for stable grouping/UI labels.
         let mut physical_core_map: HashMap<usize, usize> = HashMap::new();
         let mut physical_core_counter = 0usize;
         for obj in &logical_processors {
+            // `if let` is pattern matching for one desired shape (here: only `Some(...)`).
             if let Some(parent) = obj.parent() {
                 if parent.object_type() == ObjectType::Core {
                     let core_li = parent.logical_index();
@@ -137,7 +142,7 @@ impl CpuTopology {
             }
         }
 
-        // ── CPU kind map (Intel P/E) + FrequencyMaxMHz from cpu_kinds ────
+        // Build per-logical-CPU kind/frequency hints from hwloc cpu_kinds metadata.
         let mut kind_map: HashMap<usize, CoreKind> = HashMap::new();
         let mut kind_max_freq_mhz: HashMap<usize, u64> = HashMap::new();
         if let Ok(kinds) = topo.cpu_kinds() {
@@ -171,12 +176,10 @@ impl CpuTopology {
             }
         }
 
-        // ── Max frequency per LP from sysfs ───────────────────────────────
+        // Linux may expose more accurate per-CPU max clocks in sysfs; use it first when present.
         let sysfs_max_freq = read_sysfs_max_freq_khz(logical_processors.len());
 
-        // ── Per-core private caches (L1/L2) ──────────────────────────────
-        // For every Core object, walk its ancestors collecting cache objects
-        // until we hit a Die or Package (those are the shared levels).
+        // Walk upward from each core and collect private caches (L1/L2) before shared levels.
         for core_obj in topo.objects_with_type(ObjectType::Core) {
             let core_li = core_obj.logical_index();
             let phys_idx = *physical_core_map.get(&core_li).unwrap_or(&core_li);
@@ -185,12 +188,10 @@ impl CpuTopology {
             let mut cur = core_obj.parent();
             while let Some(anc) = cur {
                 match anc.object_type() {
-                    // Stop when we leave the per-core hierarchy
                     ObjectType::Die | ObjectType::Package | ObjectType::Machine => break,
                     t if t.is_cpu_cache() => {
                         if let Some(ObjectAttributes::Cache(ca)) = anc.attributes() {
                             let level = ca.depth() as u8;
-                            // L1 and L2 are private; L3+ are shared — stop at L3
                             if level >= 3 {
                                 break;
                             }
@@ -214,14 +215,14 @@ impl CpuTopology {
             }
         }
 
-        // ── Shared caches (L3+) per Die/CCD ──────────────────────────────
-        // Walk all L3/L4/L5 cache objects; attribute each to its Die ancestor.
+        // Collect shared caches (L3+) and bucket by die/CCD.
         for cache_type in [
             ObjectType::L3Cache,
             ObjectType::L4Cache,
             ObjectType::L5Cache,
         ] {
             for cache_obj in topo.objects_with_type(cache_type) {
+                // `let ... else` destructures-or-early-continues; useful for linear happy-path code.
                 let Some(ObjectAttributes::Cache(ca)) = cache_obj.attributes() else {
                     continue;
                 };
@@ -229,7 +230,6 @@ impl CpuTopology {
                 let level = ca.depth() as u8;
                 let size_bytes = sz.get();
 
-                // Find the Die ancestor (-1 = no Die, put under key -1 for whole-package)
                 let die_li = Self::find_ancestor_type_static(cache_obj, ObjectType::Die);
 
                 topology
@@ -239,14 +239,13 @@ impl CpuTopology {
                     .push(CacheEntry { level, size_bytes });
             }
         }
-        // Sort and deduplicate each Die's shared cache list
+        // Normalize each shared-cache list for deterministic display.
         for caches in topology.ccd_shared_caches.values_mut() {
             caches.sort_by_key(|c| c.level);
             caches.dedup_by_key(|c| c.level);
         }
 
-        // If there were no Die objects, also check for L3 cache under Package
-        // (single-CCD AMD, most Intel) and store under key -1.
+        // Some topologies have no Die objects. Keep L3 data under sentinel key `-1`.
         if topology.ccd_shared_caches.is_empty() {
             for cache_obj in topo.objects_with_type(ObjectType::L3Cache) {
                 let Some(ObjectAttributes::Cache(ca)) = cache_obj.attributes() else {
@@ -268,7 +267,7 @@ impl CpuTopology {
             }
         }
 
-        // ── Build LogicalProcessorInfo ────────────────────────────────────
+        // Build final logical-CPU records used by selection/grouping helpers.
         for obj in &logical_processors {
             let li = obj.logical_index();
 
@@ -285,8 +284,8 @@ impl CpuTopology {
                 .unwrap_or(false);
 
             let kind = kind_map.get(&li).copied().unwrap_or(CoreKind::Unknown);
-            let ccd = Self::find_ancestor_type_static_li(&topo, obj, ObjectType::Die);
-            let numa_node = Self::find_ancestor_type_static_li(&topo, obj, ObjectType::NUMANode);
+            let ccd = Self::find_ancestor_type_static_li(obj, ObjectType::Die);
+            let numa_node = Self::find_ancestor_type_static_li(obj, ObjectType::NUMANode);
 
             let max_freq_khz = sysfs_max_freq
                 .get(li)
@@ -309,13 +308,15 @@ impl CpuTopology {
         topology
     }
 
-    /// Walk obj's ancestors to find the first one of `target_type`, return its logical_index or -1.
+    /// Returns first ancestor logical index of the target type, or -1.
     fn find_ancestor_type_static_li(
-        _topo: &Topology,
         obj: &hwlocality::object::TopologyObject,
         target_type: ObjectType,
     ) -> isize {
+        // Keep traversal in a free/static helper shape so callers can finish borrowing `self`
+        // before walking hwloc parent links (simplifies lifetime/borrow interactions).
         let mut cur = obj.parent();
+        // `while let` keeps looping while pattern match succeeds.
         while let Some(anc) = cur {
             if anc.object_type() == target_type {
                 return anc.logical_index() as isize;
@@ -325,7 +326,7 @@ impl CpuTopology {
         -1
     }
 
-    /// Same but takes just the object (no topology reference needed).
+    /// Same traversal helper kept separate for call-site readability in cache code paths.
     fn find_ancestor_type_static(
         obj: &hwlocality::object::TopologyObject,
         target_type: ObjectType,
@@ -340,9 +341,10 @@ impl CpuTopology {
         -1
     }
 
-    // ── Public accessors ──────────────────────────────────────────────────
+    // Query helpers used by presets and filtering.
 
     pub fn processors(&self) -> &[LogicalProcessorInfo] {
+        // `&T` is a shared reference; `&[T]` is a slice view (read-only window over contiguous items).
         &self.processors
     }
 
@@ -400,7 +402,8 @@ impl CpuTopology {
         self.processors.len()
     }
 
-    // ── Structured topology view ──────────────────────────────────────────
+    // Structured presentation model with one top-level grouping strategy:
+    // die/CCD first, otherwise hybrid split, otherwise one flat group.
 
     pub fn topology_view(&self) -> TopologyView {
         let has_ccd = self.processors.iter().any(|p| p.ccd >= 0);
@@ -415,7 +418,7 @@ impl CpuTopology {
     }
 
     fn shared_caches_for_die(&self, die_li: isize) -> Vec<CacheEntry> {
-        // Try exact Die key first, then the package-level fallback (-1).
+        // Prefer exact die key, then package-level fallback (`-1`).
         self.ccd_shared_caches
             .get(&die_li)
             .or_else(|| self.ccd_shared_caches.get(&-1))
@@ -479,7 +482,7 @@ impl CpuTopology {
 
     fn build_flat_group(&self) -> Vec<TopLevelGroup> {
         let all: Vec<&LogicalProcessorInfo> = self.processors.iter().collect();
-        // For a flat group use the first (and usually only) shared-cache entry
+        // Flat view uses first shared-cache entry when available.
         let shared = self
             .ccd_shared_caches
             .values()
@@ -494,6 +497,7 @@ impl CpuTopology {
     }
 
     fn build_physical_cores_view(&self, procs: &[&LogicalProcessorInfo]) -> Vec<PhysicalCoreView> {
+        // Input uses references to avoid copying processor records while regrouping.
         let mut by_core: HashMap<usize, Vec<(ThreadView, u64)>> = HashMap::new();
         for p in procs {
             by_core.entry(p.physical_core_index).or_default().push((
@@ -529,7 +533,7 @@ impl CpuTopology {
     }
 }
 
-// ─── Sysfs max frequency (Linux) ─────────────────────────────────────────────
+// Linux-only max-frequency probe. Non-Linux builds keep zeros and rely on hwloc hints.
 
 fn read_sysfs_max_freq_khz(num_cpus: usize) -> Vec<u64> {
     let mut result = vec![0u64; num_cpus];
@@ -545,7 +549,7 @@ fn read_sysfs_max_freq_khz(num_cpus: usize) -> Vec<u64> {
     result
 }
 
-// ─── Formatting helpers ───────────────────────────────────────────────────────
+// Small formatting helpers for human-readable UI labels.
 
 pub fn format_cache_size(bytes: u64) -> String {
     if bytes >= 1024 * 1024 * 1024 {
@@ -567,7 +571,7 @@ pub fn format_freq_ghz(khz: u64) -> String {
     format!("{:.2} GHz", khz as f64 / 1_000_000.0)
 }
 
-// ─── Global singleton ─────────────────────────────────────────────────────────
+// Process-wide lazy singleton so topology discovery runs once.
 
 static TOPOLOGY: OnceLock<CpuTopology> = OnceLock::new();
 
@@ -575,7 +579,7 @@ pub fn get_topology() -> &'static CpuTopology {
     TOPOLOGY.get_or_init(CpuTopology::discover)
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// Basic invariants for discovery and formatting.
 
 #[cfg(test)]
 mod tests {
