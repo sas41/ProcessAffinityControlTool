@@ -28,6 +28,7 @@ pub fn colored_button_style(
                 radius: 4.0.into(),
                 ..Default::default()
             },
+            snap: false,
             shadow: if matches!(status, button::Status::Pressed) {
                 Shadow {
                     color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6),
@@ -41,26 +42,20 @@ pub fn colored_button_style(
     }
 }
 
-/// Render a Bootstrap icon glyph as a plain text widget at the given size.
-pub fn icon(glyph: iced_fonts::Bootstrap) -> iced::widget::Text<'static> {
-    text(char::from(glyph).to_string())
-        .font(iced_fonts::BOOTSTRAP_FONT)
-        .size(14.0)
+/// Render a Bootstrap icon glyph as a plain text widget at size 14.
+pub fn icon(glyph: iced::widget::Text<'static>) -> iced::widget::Text<'static> {
+    glyph.size(14.0)
 }
 
-/// Render a Bootstrap icon glyph at the given size, centered in a fixed square.
+/// Render a Bootstrap icon glyph at size 16, centered in a fixed square.
 pub fn icon_button_content(
-    glyph: iced_fonts::Bootstrap,
+    glyph: iced::widget::Text<'static>,
 ) -> container::Container<'static, crate::gui::Message> {
-    container(
-        text(char::from(glyph).to_string())
-            .font(iced_fonts::BOOTSTRAP_FONT)
-            .size(16.0),
-    )
-    .width(28)
-    .height(28)
-    .center_x(28)
-    .center_y(28)
+    container(glyph.size(16.0))
+        .width(28)
+        .height(28)
+        .center_x(28)
+        .center_y(28)
 }
 use iced::{Alignment, Background, Border, Color};
 

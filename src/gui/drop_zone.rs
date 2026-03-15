@@ -74,13 +74,13 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         tree: &mut Tree,
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
         self.content
-            .as_widget()
+            .as_widget_mut()
             .layout(&mut tree.children[0], renderer, limits)
     }
 
@@ -119,6 +119,7 @@ where
                                 radius: 5.0.into(),
                             },
                             shadow: Shadow::default(),
+                            snap: false,
                         },
                         Background::Color(Color::from_rgba(0.0, 0.45, 0.9, 0.12)),
                     );
@@ -132,6 +133,7 @@ where
                                 radius: 5.0.into(),
                             },
                             shadow: Shadow::default(),
+                            snap: false,
                         },
                         Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.0)),
                     );
@@ -140,29 +142,30 @@ where
         }
     }
 
-    fn on_event(
+    fn update(
         &mut self,
         tree: &mut Tree,
-        event: Event,
+        event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
-    ) -> event::Status {
+    ) {
         // Intercept release only when a drag is active and cursor is over us.
-        if let Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) = &event {
+        if let Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) = event {
             if let (Some(name), Some(on_drop)) = (&self.dropping, &self.on_drop) {
                 if cursor.is_over(layout.bounds()) {
                     shell.publish(on_drop(name.clone()));
-                    return event::Status::Captured;
+                    shell.capture_event();
+                    return;
                 }
             }
         }
 
         // Forward everything else to the inner content as normal.
-        self.content.as_widget_mut().on_event(
+        self.content.as_widget_mut().update(
             &mut tree.children[0],
             event,
             layout,
@@ -198,12 +201,13 @@ where
     fn overlay<'b>(
         &'b mut self,
         tree: &'b mut Tree,
-        layout: Layout<'_>,
+        layout: Layout<'b>,
         renderer: &Renderer,
+        viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         self.content
             .as_widget_mut()
-            .overlay(&mut tree.children[0], layout, renderer, translation)
+            .overlay(&mut tree.children[0], layout, renderer, viewport, translation)
     }
 }

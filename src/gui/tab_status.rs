@@ -41,9 +41,9 @@ pub fn view<'a>(
                 })
                 .size(13),
                 icon(if cache.is_scanner_active {
-                    iced_fonts::Bootstrap::PauseFill
+                    iced_fonts::bootstrap::pause_fill()
                 } else {
-                    iced_fonts::Bootstrap::PlayFill
+                    iced_fonts::bootstrap::play_fill()
                 }),
             ]
             .spacing(6)
@@ -61,9 +61,9 @@ pub fn view<'a>(
             row![
                 text("Auto Mode").size(13),
                 icon(if cache.is_auto_mode {
-                    iced_fonts::Bootstrap::ToggleOn
+                    iced_fonts::bootstrap::toggle_on()
                 } else {
-                    iced_fonts::Bootstrap::ToggleOff
+                    iced_fonts::bootstrap::toggle_off()
                 }),
             ]
             .spacing(6)
@@ -80,7 +80,7 @@ pub fn view<'a>(
         container(
             row![
                 text("Fresh Scan").size(13),
-                icon(iced_fonts::Bootstrap::ArrowClockwise),
+                icon(iced_fonts::bootstrap::arrow_clockwise()),
             ]
             .spacing(6)
             .align_y(Alignment::Center),
@@ -94,9 +94,9 @@ pub fn view<'a>(
 
     let top_bar = row![
         scanner_btn,
-        Space::with_width(8.0),
+        Space::new().width(8.0),
         auto_btn,
-        Space::with_width(8.0),
+        Space::new().width(8.0),
         scan_btn
     ]
     .align_y(Alignment::Center);
@@ -118,15 +118,15 @@ pub fn view<'a>(
 
     let stats_row = row![
         stat_badge("Total", cache.running.len(), Color::from_rgb(0.5, 0.8, 1.0)),
-        Space::with_width(12.0),
+        Space::new().width(12.0),
         stat_badge("Assigned", assigned_count, Color::from_rgb(0.5, 1.0, 0.5)),
-        Space::with_width(12.0),
+        Space::new().width(12.0),
         stat_badge(
             "Inaccessible",
             cache.protected_count,
             Color::from_rgb(1.0, 0.5, 0.5)
         ),
-        Space::with_width(12.0),
+        Space::new().width(12.0),
         stat_badge(
             "Groups",
             cache.groups.len(),
@@ -141,7 +141,7 @@ pub fn view<'a>(
             weight: iced::font::Weight::Bold,
             ..Default::default()
         }),
-        progress_bar(0.0..=100.0, cache.cpu_stats.global).width(Length::Fixed(300.0)),
+        progress_bar(0.0..=100.0, cache.cpu_stats.global).length(Length::Fixed(300.0)),
         text(format!("{:.0}%", cache.cpu_stats.global)).size(13),
     ]
     .align_y(Alignment::Center)

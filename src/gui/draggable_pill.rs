@@ -59,15 +59,11 @@ impl<Message, Theme, Renderer: iced::advanced::Renderer> overlay::Overlay<Messag
                         radius: (bounds.height / 2.0).into(),
                     },
                     shadow: Shadow::default(),
+                    snap: false,
                 },
                 Background::Color(Color::from_rgba(0.05, 0.35, 0.75, 0.80)),
             );
         }
-    }
-
-    /// Never block the cursor from reaching widgets below — the ghost is visual only.
-    fn is_over(&self, _layout: Layout<'_>, _renderer: &Renderer, _cursor: Point) -> bool {
-        false
     }
 }
 
@@ -132,13 +128,13 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         tree: &mut Tree,
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
         self.content
-            .as_widget()
+            .as_widget_mut()
             .layout(&mut tree.children[0], renderer, limits)
     }
 
@@ -175,6 +171,7 @@ where
                                 bounds: b,
                                 border: Border::default(),
                                 shadow: Shadow::default(),
+                                snap: false,
                             },
                             Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.40)),
                         );
@@ -195,27 +192,28 @@ where
         );
     }
 
-    fn on_event(
+    fn update(
         &mut self,
         tree: &mut Tree,
-        event: Event,
+        event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
-    ) -> event::Status {
+    ) {
         let state = tree.state.downcast_mut::<State>();
 
-        match &event {
+        match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if let Some(pos) = cursor.position_over(layout.bounds()) {
                     state.pressed = true;
                     state.origin = Some(pos);
                     state.cursor = pos;
                     state.drag_fired = false;
-                    return event::Status::Captured;
+                    shell.capture_event();
+                    return;
                 }
             }
 
@@ -233,8 +231,8 @@ where
                         }
                     }
                 }
-                // Always Ignored so other widgets still see cursor movement.
-                return event::Status::Ignored;
+                // Do not capture: let other widgets still see cursor movement.
+                return;
             }
 
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
@@ -242,8 +240,8 @@ where
                     state.pressed = false;
                     state.origin = None;
                     state.drag_fired = false;
-                    // Ignored: let DropZone and the subscription also handle this.
-                    return event::Status::Ignored;
+                    // Do not capture: let DropZone and the subscription also handle this.
+                    return;
                 }
             }
 
@@ -252,7 +250,7 @@ where
 
         // Forward other events to inner content when not mid-drag.
         if !state.pressed {
-            self.content.as_widget_mut().on_event(
+            self.content.as_widget_mut().update(
                 &mut tree.children[0],
                 event,
                 layout,
@@ -262,8 +260,6 @@ where
                 shell,
                 viewport,
             )
-        } else {
-            event::Status::Ignored
         }
     }
 
@@ -294,8 +290,9 @@ where
     fn overlay<'b>(
         &'b mut self,
         tree: &'b mut Tree,
-        layout: Layout<'_>,
+        layout: Layout<'b>,
         renderer: &Renderer,
+        viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State>();
@@ -319,6 +316,6 @@ where
         // Not dragging — delegate to inner content's overlay (e.g. dropdowns).
         self.content
             .as_widget_mut()
-            .overlay(&mut tree.children[0], layout, renderer, translation)
+            .overlay(&mut tree.children[0], layout, renderer, viewport, translation)
     }
 }

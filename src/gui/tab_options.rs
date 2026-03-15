@@ -30,7 +30,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
             })
             .step(100.0f32)
             .width(Length::Fixed(220.0)),
-            Space::with_width(8.0),
+            Space::new().width(8.0),
             text(format!("{} ms", scan_ms as u64)).size(13),
         ]
         .align_y(Alignment::Center)
@@ -182,7 +182,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     .spacing(8);
 
     let divider = || {
-        container(Space::with_height(1.0))
+        container(Space::new().height(1.0))
             .width(Length::Fill)
             .style(|_| iced::widget::container::Style {
                 background: Some(Background::Color(Color::from_rgb(0.25, 0.25, 0.25))),

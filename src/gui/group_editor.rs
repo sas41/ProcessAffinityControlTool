@@ -223,17 +223,17 @@ impl GroupEditor {
 
         // Flags
         let flags_row = row![
-            checkbox("Default group", self.is_default)
+            checkbox(self.is_default).label("Default group")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleDefault)),
-            Space::with_width(12.0),
-            checkbox("Blacklist", self.is_blacklist)
+            Space::new().width(12.0),
+            checkbox(self.is_blacklist).label("Blacklist")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleBlacklist)),
         ]
         .spacing(10);
 
         // Affinity section
         let affinity_section = {
-            let toggle = checkbox("Set CPU affinity", self.affinity_enabled)
+            let toggle = checkbox(self.affinity_enabled).label("Set CPU affinity")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAffinity));
 
             let mut content = Column::new().spacing(10).push(toggle);
@@ -292,7 +292,7 @@ impl GroupEditor {
                         format!("{i}")
                     };
 
-                    let checkbox = checkbox(lbl, *checked).on_toggle(move |c| {
+                    let checkbox = checkbox(*checked).label(lbl).on_toggle(move |c| {
                         AppMessage::GroupEditorMessage(Message::CoreToggled(i, c))
                     });
 
@@ -316,7 +316,7 @@ impl GroupEditor {
 
         // Priority section
         let priority_section = {
-            let toggle = checkbox("Set priority", self.priority_enabled)
+            let toggle = checkbox(self.priority_enabled).label("Set priority")
                 .on_toggle(|_| AppMessage::GroupEditorMessage(Message::TogglePriority));
 
             let mut content = Column::new().spacing(10).push(toggle);
@@ -382,7 +382,7 @@ impl GroupEditor {
 
         let delete_actions = if !self.editing_name.is_empty() {
             row![
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 button("Delete Group").on_press(AppMessage::GroupEditorMessage(Message::Delete))
             ]
             .spacing(10)

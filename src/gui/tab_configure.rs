@@ -87,7 +87,7 @@ pub fn view<'a>(
                 btn
             }
         },
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         button(text("Help").size(13))
             .on_press(AppMessage::ShowGroupsHelp)
             .padding([5, 10]),
@@ -110,8 +110,8 @@ pub fn view<'a>(
                     weight: font::Weight::Bold,
                     ..Default::default()
                 }),
-                Space::with_width(Length::Fill),
-                button(icon_button_content(iced_fonts::Bootstrap::ThreeDots))
+                Space::new().width(Length::Fill),
+                button(icon_button_content(iced_fonts::bootstrap::three_dots()))
                     .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(
                         Some(gname.clone(),)
                     )))
@@ -140,7 +140,7 @@ pub fn view<'a>(
             let card = container(
                 column![
                     header,
-                    container(Space::with_height(1.0))
+                    container(Space::new().height(1.0))
                         .width(Length::Fill)
                         .style(|_| ContainerStyle {
                             background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
@@ -201,7 +201,7 @@ pub fn view<'a>(
                     weight: font::Weight::Bold,
                     ..Default::default()
                 }),
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 text_input("Filter…", process_filter)
                     .on_input(|s| AppMessage::ConfigureMessage(Message::UpdateProcessFilter(s)))
                     .width(Length::Fixed(160.0))
@@ -209,7 +209,7 @@ pub fn view<'a>(
             ]
             .align_y(Alignment::Center)
             .spacing(8),
-            container(Space::with_height(1.0))
+            container(Space::new().height(1.0))
                 .width(Length::Fill)
                 .style(|_| ContainerStyle {
                     background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
@@ -240,8 +240,8 @@ pub fn view<'a>(
             weight: font::Weight::Bold,
             ..Default::default()
         }),
-        Space::with_width(Length::Fill),
-        button(icon_button_content(iced_fonts::Bootstrap::Plus))
+        Space::new().width(Length::Fill),
+        button(icon_button_content(iced_fonts::bootstrap::plus()))
             .on_press(AppMessage::ConfigureMessage(
                 Message::OpenCustomProcessEditor(None),
             ))
@@ -261,8 +261,8 @@ pub fn view<'a>(
             col.push(
                 row![
                     DraggablePill::new(process_pill(name, false), drag_msg),
-                    Space::with_width(Length::Fill),
-                    button(icon_button_content(iced_fonts::Bootstrap::ThreeDots))
+                    Space::new().width(Length::Fill),
+                    button(icon_button_content(iced_fonts::bootstrap::three_dots()))
                         .on_press(edit_msg)
                         .padding(0),
                 ]
@@ -274,7 +274,7 @@ pub fn view<'a>(
     let custom_card = container(
         column![
             custom_header,
-            container(Space::with_height(1.0))
+            container(Space::new().height(1.0))
                 .width(Length::Fill)
                 .style(|_| ContainerStyle {
                     background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),

@@ -196,7 +196,7 @@ impl ProcessOverwatch {
     // ── Scan helpers ──────────────────────────────────────────────────────
 
     pub fn refresh_cpu_stats(system: &mut System) -> CpuStats {
-        system.refresh_cpu_specifics(CpuRefreshKind::new().with_cpu_usage().with_frequency());
+        system.refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage().with_frequency());
         let cpus = system.cpus();
         let per_core: Vec<f32> = cpus.iter().map(|c| c.cpu_usage()).collect();
         let per_core_mhz: Vec<u64> = cpus.iter().map(|c| c.frequency()).collect();
@@ -217,7 +217,7 @@ impl ProcessOverwatch {
         let mut detections = CaseInsensitiveHashSet::new();
 
         for (pid, process) in system.processes() {
-            let name_lc = process.name().to_lowercase();
+            let name_lc = process.name().to_string_lossy().to_lowercase();
             if name_lc == "idle" || name_lc == "system" {
                 continue;
             }
@@ -230,7 +230,7 @@ impl ProcessOverwatch {
                     if !parent.is_empty() {
                         let cfg = self.inner.user_config.lock().unwrap();
                         if cfg.auto_mode_launchers.contains(parent.as_str()) {
-                            detections.insert(process.name().to_string());
+                            detections.insert(process.name().to_string_lossy().into_owned());
                         }
                     }
                     continue;
@@ -239,11 +239,11 @@ impl ProcessOverwatch {
 
             if let Some(ppid) = process.parent() {
                 if let Some(parent_proc) = system.process(ppid) {
-                    let parent_name = parent_proc.name().to_string();
+                    let parent_name = parent_proc.name().to_string_lossy().into_owned();
                     pairs.insert(pid_u32, parent_name.clone());
                     let cfg = self.inner.user_config.lock().unwrap();
                     if cfg.auto_mode_launchers.contains(&parent_name) {
-                        detections.insert(process.name().to_string());
+                        detections.insert(process.name().to_string_lossy().into_owned());
                     }
                 }
             }
@@ -265,7 +265,7 @@ impl ProcessOverwatch {
         let mut all_names: Vec<String> = system
             .processes()
             .values()
-            .map(|p| p.name().to_string())
+            .map(|p| p.name().to_string_lossy().into_owned())
             .collect();
         all_names.sort_unstable();
         all_names.dedup();
@@ -281,7 +281,7 @@ impl ProcessOverwatch {
                 }
             }
 
-            let process_name = process.name().to_string();
+            let process_name = process.name().to_string_lossy().into_owned();
 
             let (affinity_mask, priority, is_blacklist) = {
                 let cfg = self.inner.user_config.lock().unwrap();
@@ -719,21 +719,21 @@ impl ScanHandler {
             // relies on to compute the usage delta, producing zeros.  Two
             // isolated instances avoid this interference entirely.
             let mut cpu_sys = System::new_with_specifics(
-                RefreshKind::new()
-                    .with_cpu(CpuRefreshKind::new().with_cpu_usage().with_frequency()),
+                RefreshKind::nothing()
+                    .with_cpu(CpuRefreshKind::nothing().with_cpu_usage().with_frequency()),
             );
             let mut proc_sys = System::new_with_specifics(
-                RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::everything()),
+                RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::everything()),
             );
 
             // Prime CPU sampler — must have one prior sample before the loop
             // so the first delta is meaningful.
-            cpu_sys.refresh_cpu_specifics(CpuRefreshKind::new().with_cpu_usage().with_frequency());
+            cpu_sys.refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage().with_frequency());
             thread::sleep(Duration::from_millis(500));
 
             while !stop_flag.load(Ordering::Relaxed) {
                 // Refresh each system independently
-                proc_sys.refresh_processes_specifics(sysinfo::ProcessRefreshKind::everything());
+                proc_sys.refresh_processes_specifics(sysinfo::ProcessesToUpdate::All, true, sysinfo::ProcessRefreshKind::everything());
                 let stats = ProcessOverwatch::refresh_cpu_stats(&mut cpu_sys);
                 *overwatch.inner.cpu_stats.lock().unwrap() = stats;
 

@@ -193,7 +193,7 @@ impl CustomProcessEditor {
 
         // Affinity section
         let affinity_section = {
-            let toggle = checkbox("Set CPU affinity", self.affinity_enabled)
+            let toggle = checkbox(self.affinity_enabled).label("Set CPU affinity")
                 .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::ToggleAffinity));
 
             let mut content = Column::new().spacing(10).push(toggle);
@@ -251,7 +251,7 @@ impl CustomProcessEditor {
                         format!("{i}")
                     };
 
-                    let cb = checkbox(lbl, *checked).on_toggle(move |c| {
+                    let cb = checkbox(*checked).label(lbl).on_toggle(move |c| {
                         AppMessage::CustomProcessEditorMessage(Message::CoreToggled(i, c))
                     });
 
@@ -275,7 +275,7 @@ impl CustomProcessEditor {
 
         // Priority section
         let priority_section = {
-            let toggle = checkbox("Set priority", self.priority_enabled)
+            let toggle = checkbox(self.priority_enabled).label("Set priority")
                 .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::TogglePriority));
 
             let mut content = Column::new().spacing(10).push(toggle);
@@ -337,7 +337,7 @@ impl CustomProcessEditor {
 
         let delete_row = if !self.editing_name.is_empty() {
             row![
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 button("Remove").on_press(AppMessage::CustomProcessEditorMessage(Message::Delete))
             ]
             .spacing(10)

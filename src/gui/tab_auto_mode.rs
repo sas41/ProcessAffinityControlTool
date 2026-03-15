@@ -26,9 +26,9 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
             row![
                 text("Auto Mode").size(13),
                 icon(if cache.is_auto_mode {
-                    iced_fonts::Bootstrap::ToggleOn
+                    iced_fonts::bootstrap::toggle_on()
                 } else {
-                    iced_fonts::Bootstrap::ToggleOff
+                    iced_fonts::bootstrap::toggle_off()
                 }),
             ]
             .spacing(6)
@@ -61,7 +61,7 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
             col.push(
                 row![
                     text(name).size(13).color(Color::from_rgb(0.86, 0.86, 0.86)),
-                    Space::with_width(Length::Fill),
+                    Space::new().width(Length::Fill),
                     button(text("[x]").size(11))
                         .on_press(AppMessage::AutoModeMessage(Message::RemoveLauncher(
                             name_clone,

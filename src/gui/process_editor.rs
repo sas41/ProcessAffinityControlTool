@@ -180,7 +180,7 @@ impl ProcessEditor {
         let actions_row: Row<AppMessage> = if is_editing {
             row![
                 left_actions,
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 button(text("Remove").size(13))
                     .on_press(AppMessage::ProcessEditorMessage(Message::Remove))
                     .style(|_, _| button::Style {

@@ -411,10 +411,10 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
             // Always minimize to tray (this is now the default behavior that cannot be turned off)
             // Minimize first (signals the compositor), then hide the surface
             // so the window disappears from both view and the taskbar.
-            return iced::window::get_latest().and_then(|id| {
+            return iced::window::latest().and_then(|id| {
                 Task::batch([
                     iced::window::minimize(id, true),
-                    iced::window::change_mode(id, iced::window::Mode::Hidden),
+                    iced::window::set_mode(id, iced::window::Mode::Hidden),
                 ])
             });
         }
@@ -429,23 +429,30 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 // Left/double click restores the window (Windows/macOS).
                 if let Ok(ev) = tray_icon::TrayIconEvent::receiver().try_recv() {
                     if matches!(
-                        ev.click_type,
-                        tray_icon::ClickType::Left | tray_icon::ClickType::Double
+                        ev,
+                        tray_icon::TrayIconEvent::Click {
+                            button: tray_icon::MouseButton::Left,
+                            button_state: tray_icon::MouseButtonState::Up,
+                            ..
+                        } | tray_icon::TrayIconEvent::DoubleClick {
+                            button: tray_icon::MouseButton::Left,
+                            ..
+                        }
                     ) {
-                        return iced::window::get_latest().and_then(|id| {
-                            iced::window::change_mode(id, iced::window::Mode::Windowed)
+                        return iced::window::latest().and_then(|id| {
+                            iced::window::set_mode(id, iced::window::Mode::Windowed)
                         });
                     }
                 }
                 // Context-menu items (Linux / all platforms).
                 if let Ok(ev) = tray_icon::menu::MenuEvent::receiver().try_recv() {
                     if ev.id == tray.show_id {
-                        return iced::window::get_latest().and_then(|id| {
-                            iced::window::change_mode(id, iced::window::Mode::Windowed)
+                        return iced::window::latest().and_then(|id| {
+                            iced::window::set_mode(id, iced::window::Mode::Windowed)
                         });
                     } else if ev.id == tray.quit_id {
                         app.pact.stop_scan_handler();
-                        return iced::window::get_latest().and_then(iced::window::close);
+                        return iced::window::latest().and_then(iced::window::close);
                     }
                 }
             }
@@ -486,16 +493,16 @@ fn view_groups_help() -> Element<'static, gui::Message> {
 
     let content = column![
         text("How Groups Work").size(18).font(iced::Font { weight: iced::font::Weight::Bold, ..Default::default() }),
-        Space::with_height(4),
+        Space::new().height(4),
         text("Groups let you apply CPU affinity and/or priority settings to a set of processes. Assign processes to a group and they will be managed automatically on each scan.").size(13).color(Color::from_rgb(0.75, 0.75, 0.75)),
-        Space::with_height(8),
+        Space::new().height(8),
         section("Affinity", "Restricts which CPU cores a group's processes may run on. Useful for isolating workloads to P-cores, E-cores, or a specific CCD."),
         section("Priority", "Sets the OS scheduling priority for processes in the group. Higher priority means more CPU time relative to other processes."),
         section("Default Group", "Processes not explicitly assigned to any group automatically land here. Only one group can be the default at a time."),
         section("Blacklist", "Processes assigned to a blacklist group are skipped entirely — no affinity or priority changes are applied."),
         section("Custom Processes", "Individual processes with their own affinity and priority, independent of any group."),
         section("Drag & Drop", "Drag any pill from Running Processes onto a group card to assign it, or onto the Custom Processes area to configure it individually.\nDragging any pill to the Running Processes area will remove it from it's group."),
-        Space::with_height(8),
+        Space::new().height(8),
         button(text("Close").size(13))
             .on_press(gui::Message::HideGroupsHelp)
             .padding([5, 14]),
@@ -599,7 +606,8 @@ fn main() -> iced::Result {
     let (rgba, w, h) = load_icon_rgba();
     let window_icon = iced::window::icon::from_rgba(rgba, w, h).ok();
 
-    iced::application("Process Affinity Control Tool", update, view)
+    iced::application(ProcessAffinityApp::default, update, view)
+        .title("Process Affinity Control Tool")
         .settings(settings)
         .subscription(subscription)
         .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
