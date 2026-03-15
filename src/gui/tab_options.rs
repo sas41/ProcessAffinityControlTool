@@ -1,6 +1,6 @@
 use iced::font;
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, slider, text, Column, Container, Space,
+    button, column, container, row, scrollable, slider, text, Column, Container, Space,
 };
 use iced::{Alignment, Background, Color, Font, Length};
 
@@ -13,7 +13,6 @@ pub enum Message {
     SetScanInterval(f32),
     ResetConfig,
     OpenGitHub,
-    SetMinimizeToTray(bool),
 }
 
 pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessage> {
@@ -194,20 +193,8 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     let github_btn =
         button(text("GitHub").size(13)).on_press(AppMessage::OptionsMessage(Message::OpenGitHub));
 
-    let behavior_section = column![
-        text("Behavior").size(16).font(Font {
-            weight: iced::font::Weight::Bold,
-            ..Default::default()
-        }),
-        checkbox("Minimize to tray on close", cache.minimize_to_tray)
-            .on_toggle(|v| AppMessage::OptionsMessage(Message::SetMinimizeToTray(v))),
-    ]
-    .spacing(8);
-
     let content = column![
         interval_section,
-        divider(),
-        behavior_section,
         divider(),
         config_section,
         divider(),

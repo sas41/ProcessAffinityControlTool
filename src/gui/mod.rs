@@ -18,7 +18,6 @@ pub struct AppCache {
     pub launchers: Vec<String>,
     pub detections: Vec<String>,
     pub scan_interval: u64,
-    pub minimize_to_tray: bool,
 }
 
 pub mod custom_process_editor;

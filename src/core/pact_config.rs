@@ -139,10 +139,6 @@ pub struct PACTConfig {
 
     #[serde(rename = "ScanInterval")]
     pub scan_interval: u64,
-
-    /// Hide to the system tray instead of quitting when the window is closed.
-    #[serde(rename = "MinimizeToTray", default)]
-    pub minimize_to_tray: bool,
 }
 
 impl Default for PACTConfig {
@@ -176,7 +172,6 @@ impl Default for PACTConfig {
             custom_processes: Vec::new(),
             auto_mode_launchers,
             scan_interval: 3000,
-            minimize_to_tray: false,
         }
     }
 }

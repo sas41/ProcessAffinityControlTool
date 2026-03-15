@@ -128,15 +128,8 @@ impl Default for ProcessAffinityApp {
         let cache = build_cache(&pact);
         let topo_view = core::topology::get_topology().topology_view();
         let icon_rgba = load_icon_rgba();
-        let minimize_to_tray = pact
-            .pact_process_overwatch
-            .user_config_lock()
-            .minimize_to_tray;
-        let tray_state = if minimize_to_tray {
-            create_tray(&icon_rgba.0, icon_rgba.1, icon_rgba.2)
-        } else {
-            None
-        };
+        // Minimize to tray is now always enabled (cannot be turned off)
+        let tray_state = create_tray(&icon_rgba.0, icon_rgba.1, icon_rgba.2);
         Self {
             num_cores: num_cpus::get(),
             pact,
@@ -171,10 +164,6 @@ fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
         launchers: pact.get_auto_mode_launchers(),
         detections: pact.get_auto_mode_detections(),
         scan_interval: pact.pact_process_overwatch.scan_interval(),
-        minimize_to_tray: pact
-            .pact_process_overwatch
-            .user_config_lock()
-            .minimize_to_tray,
     }
 }
 
@@ -357,22 +346,6 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                     let _ =
                         open::that("https://github.com/sas41/ProcessAffinityControlTool#readme");
                 }
-                gui::tab_options::Message::SetMinimizeToTray(enabled) => {
-                    app.pact
-                        .pact_process_overwatch
-                        .user_config_lock_mut()
-                        .minimize_to_tray = enabled;
-                    core::pact_instance::PACTInstance::save_config(
-                        &app.pact.pact_process_overwatch.user_config_lock(),
-                    );
-                    // Create or drop the tray icon accordingly.
-                    if enabled && app.tray_state.is_none() {
-                        app.tray_state =
-                            create_tray(&app.icon_rgba.0, app.icon_rgba.1, app.icon_rgba.2);
-                    } else if !enabled {
-                        app.tray_state = None;
-                    }
-                }
             }
             app.cache = build_cache(&app.pact);
         }
@@ -435,19 +408,15 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
             app.dragging_process = None;
         }
         gui::Message::CloseRequested => {
-            if app.cache.minimize_to_tray {
-                // Minimize first (signals the compositor), then hide the surface
-                // so the window disappears from both view and the taskbar.
-                return iced::window::get_latest().and_then(|id| {
-                    Task::batch([
-                        iced::window::minimize(id, true),
-                        iced::window::change_mode(id, iced::window::Mode::Hidden),
-                    ])
-                });
-            } else {
-                app.pact.stop_scan_handler();
-                return iced::window::get_latest().and_then(iced::window::close);
-            }
+            // Always minimize to tray (this is now the default behavior that cannot be turned off)
+            // Minimize first (signals the compositor), then hide the surface
+            // so the window disappears from both view and the taskbar.
+            return iced::window::get_latest().and_then(|id| {
+                Task::batch([
+                    iced::window::minimize(id, true),
+                    iced::window::change_mode(id, iced::window::Mode::Hidden),
+                ])
+            });
         }
         gui::Message::PollTrayEvents => {
             // Drive the GTK main loop on Linux so tray/menu events are dispatched.
