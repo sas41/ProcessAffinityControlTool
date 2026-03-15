@@ -3,63 +3,38 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
-use crate::core::process_config::{AffinityConfig, ProcessGroup};
+use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
 use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
 use crate::gui::Message as AppMessage;
 
-// ─── ProcessGroup default constructor ────────────────────────────────────────
+// ─── Custom process editor dialog ─────────────────────────────────────────────
 
-pub trait ProcessGroupExt {
-    fn default_new() -> ProcessGroup;
-}
-
-impl ProcessGroupExt for ProcessGroup {
-    fn default_new() -> ProcessGroup {
-        ProcessGroup {
-            name: String::new(),
-            affinity: None,
-            priority: None,
-            is_default: false,
-            is_blacklist: false,
-        }
-    }
-}
-
-// ─── Group editor dialog ──────────────────────────────────────────────────────
-
-/// Editable working copy of a ProcessGroup, displayed as a floating window.
-pub struct GroupEditor {
+/// Modal dialog for creating or editing a CustomProcess (name + affinity + priority).
+pub struct CustomProcessEditor {
     pub open: bool,
 
-    /// Name of the group being edited; empty when creating a new group.
+    /// Name of the process being edited; empty when creating a new entry.
     pub editing_name: String,
 
-    // ── Editable fields ───────────────────────────────────────────────────
     pub name: String,
-    pub is_blacklist: bool,
-    pub is_default: bool,
 
     // ── Affinity state ────────────────────────────────────────────────────
     pub affinity_enabled: bool,
-    pub core_checks: Vec<bool>, // one entry per logical core
+    pub core_checks: Vec<bool>,
 
     // ── Priority state ────────────────────────────────────────────────────
     pub priority_enabled: bool,
     pub priority_index: usize,
 
     /// Populated when OK is pressed; consumed by the caller.
-    pub result: Option<ProcessGroup>,
-
-    /// Set to true when the Delete button is pressed; consumed by the caller.
+    pub result: Option<CustomProcess>,
+    /// Set when Delete is pressed; consumed by the caller.
     pub delete_requested: bool,
 }
 
-// Messages for the Group Editor
 #[derive(Debug, Clone)]
 pub enum Message {
     NameChanged(String),
-    ToggleDefault,
-    ToggleBlacklist,
     ToggleAffinity,
     TogglePriority,
     PriorityChanged(usize),
@@ -74,35 +49,32 @@ pub enum Message {
     Delete,
 }
 
-impl GroupEditor {
-    pub fn new(group: Option<&ProcessGroup>, num_cores: usize) -> Self {
-        let g = group.cloned().unwrap_or_else(ProcessGroup::default_new);
-        let editing_name = g.name.clone();
-        let affinity_enabled = g.affinity.is_some();
-        let priority_enabled = g.priority.is_some();
+impl CustomProcessEditor {
+    pub fn new(existing: Option<&CustomProcess>, num_cores: usize) -> Self {
+        let cp = existing.cloned().unwrap_or_else(|| CustomProcess::new(""));
+        let editing_name = cp.name.clone();
+        let affinity_enabled = cp.affinity.is_some();
+        let priority_enabled = cp.priority.is_some();
 
         let mut core_checks = vec![false; num_cores];
-        if let Some(ref aff) = g.affinity {
+        if let Some(ref aff) = cp.affinity {
             for &c in &aff.core_list {
                 if c < num_cores {
                     core_checks[c] = true;
                 }
             }
         } else {
-            // Default all cores on so the user can enable affinity immediately.
             core_checks.iter_mut().for_each(|c| *c = true);
         }
 
         Self {
             open: true,
             editing_name,
-            name: g.name,
-            is_blacklist: g.is_blacklist,
-            is_default: g.is_default,
+            name: cp.name,
             affinity_enabled,
             core_checks,
             priority_enabled,
-            priority_index: g.priority.as_ref().map_or(2, priority_to_index),
+            priority_index: cp.priority.as_ref().map_or(2, priority_to_index),
             result: None,
             delete_requested: false,
         }
@@ -111,18 +83,6 @@ impl GroupEditor {
     pub fn update(&mut self, message: Message, _num_cores: usize) {
         match message {
             Message::NameChanged(name) => self.name = name,
-            Message::ToggleDefault => {
-                self.is_default = !self.is_default;
-                if self.is_default {
-                    self.is_blacklist = false;
-                }
-            }
-            Message::ToggleBlacklist => {
-                self.is_blacklist = !self.is_blacklist;
-                if self.is_blacklist {
-                    self.is_default = false;
-                }
-            }
             Message::ToggleAffinity => self.affinity_enabled = !self.affinity_enabled,
             Message::TogglePriority => self.priority_enabled = !self.priority_enabled,
             Message::PriorityChanged(index) => self.priority_index = index,
@@ -170,7 +130,7 @@ impl GroupEditor {
                 }
             }
             Message::Ok => {
-                let affinity = if self.affinity_enabled && !self.is_blacklist {
+                let affinity = if self.affinity_enabled {
                     let cores: Vec<usize> = self
                         .core_checks
                         .iter()
@@ -181,23 +141,19 @@ impl GroupEditor {
                 } else {
                     None
                 };
-                let priority = if self.priority_enabled && !self.is_blacklist {
+                let priority: Option<ProcessPriority> = if self.priority_enabled {
                     Some(index_to_priority(self.priority_index))
                 } else {
                     None
                 };
-                self.result = Some(ProcessGroup {
+                self.result = Some(CustomProcess {
                     name: self.name.trim().to_string(),
                     affinity,
                     priority,
-                    is_default: self.is_default,
-                    is_blacklist: self.is_blacklist,
                 });
                 self.open = false;
             }
-            Message::Cancel => {
-                self.open = false;
-            }
+            Message::Cancel => self.open = false,
             Message::Delete => {
                 self.delete_requested = true;
                 self.open = false;
@@ -205,59 +161,63 @@ impl GroupEditor {
         }
     }
 
-    pub fn view(&self, _num_cores: usize) -> Element<'_, AppMessage> {
+    pub fn view(&self) -> Element<'_, AppMessage> {
         let title = if self.editing_name.is_empty() {
-            "New Group"
+            "New Custom Process"
         } else {
-            "Edit Group"
+            "Edit Custom Process"
         };
 
-        // Group name field
-        let name_row = row![
-            text("Name:"),
-            text_input("", &self.name)
-                .on_input(|s| AppMessage::GroupEditorMessage(Message::NameChanged(s)))
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-
-        // Flags
-        let flags_row = row![
-            checkbox("Default group", self.is_default)
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleDefault)),
-            Space::with_width(12.0),
-            checkbox("Blacklist", self.is_blacklist)
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleBlacklist)),
-        ]
-        .spacing(10);
+        // Name field (editable only when creating)
+        let name_row: Element<AppMessage> = if self.editing_name.is_empty() {
+            row![
+                text("Name:"),
+                text_input("exe name…", &self.name)
+                    .on_input(|s| AppMessage::CustomProcessEditorMessage(Message::NameChanged(s)))
+                    .width(Length::Fill)
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into()
+        } else {
+            row![
+                text("Name:"),
+                text(self.name.as_str())
+                    .size(14)
+                    .color(Color::from_rgb(0.86, 0.86, 0.86)),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into()
+        };
 
         // Affinity section
         let affinity_section = {
             let toggle = checkbox("Set CPU affinity", self.affinity_enabled)
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAffinity));
+                .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::ToggleAffinity));
 
             let mut content = Column::new().spacing(10).push(toggle);
 
-            if self.affinity_enabled && !self.is_blacklist {
-                // Quick select buttons
+            if self.affinity_enabled {
                 let quick_select = row![
-                    button("All").on_press(AppMessage::GroupEditorMessage(Message::SelectAllCores)),
-                    button("None")
-                        .on_press(AppMessage::GroupEditorMessage(Message::SelectNoneCores)),
+                    button("All").on_press(AppMessage::CustomProcessEditorMessage(
+                        Message::SelectAllCores
+                    )),
+                    button("None").on_press(AppMessage::CustomProcessEditorMessage(
+                        Message::SelectNoneCores
+                    )),
                 ]
                 .spacing(5);
 
                 let topo = crate::core::topology::get_topology();
                 let quick_select = if topo.is_hybrid() {
                     quick_select
-                        .push(
-                            button("P-cores")
-                                .on_press(AppMessage::GroupEditorMessage(Message::SelectPCores)),
-                        )
-                        .push(
-                            button("E-cores")
-                                .on_press(AppMessage::GroupEditorMessage(Message::SelectECores)),
-                        )
+                        .push(button("P-cores").on_press(AppMessage::CustomProcessEditorMessage(
+                            Message::SelectPCores,
+                        )))
+                        .push(button("E-cores").on_press(AppMessage::CustomProcessEditorMessage(
+                            Message::SelectECores,
+                        )))
                 } else {
                     quick_select
                 };
@@ -266,8 +226,9 @@ impl GroupEditor {
                     let mut row = quick_select;
                     for (i, _) in topo.get_ccd_groups().iter().enumerate() {
                         row = row.push(
-                            button(text(format!("CCD {i}")))
-                                .on_press(AppMessage::GroupEditorMessage(Message::SelectCCD(i))),
+                            button(text(format!("CCD {i}"))).on_press(
+                                AppMessage::CustomProcessEditorMessage(Message::SelectCCD(i)),
+                            ),
                         );
                     }
                     row
@@ -275,7 +236,6 @@ impl GroupEditor {
 
                 content = content.push(quick_select);
 
-                // Core checkbox grid (8 per row)
                 let procs = topo.processors();
                 let mut grid_rows = Column::new().spacing(4);
                 let mut current_row = Row::new().spacing(6);
@@ -292,11 +252,11 @@ impl GroupEditor {
                         format!("{i}")
                     };
 
-                    let checkbox = checkbox(lbl, *checked).on_toggle(move |c| {
-                        AppMessage::GroupEditorMessage(Message::CoreToggled(i, c))
+                    let cb = checkbox(lbl, *checked).on_toggle(move |c| {
+                        AppMessage::CustomProcessEditorMessage(Message::CoreToggled(i, c))
                     });
 
-                    current_row = current_row.push(checkbox);
+                    current_row = current_row.push(cb);
                     items_in_row += 1;
 
                     if items_in_row >= 8 {
@@ -317,11 +277,11 @@ impl GroupEditor {
         // Priority section
         let priority_section = {
             let toggle = checkbox("Set priority", self.priority_enabled)
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::TogglePriority));
+                .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::TogglePriority));
 
             let mut content = Column::new().spacing(10).push(toggle);
 
-            if self.priority_enabled && !self.is_blacklist {
+            if self.priority_enabled {
                 let make_btn = |i: usize, lbl: &'static str| {
                     let selected = self.priority_index == i;
                     button(lbl)
@@ -334,7 +294,7 @@ impl GroupEditor {
                             text_color: Color::WHITE,
                             ..Default::default()
                         })
-                        .on_press(AppMessage::GroupEditorMessage(
+                        .on_press(AppMessage::CustomProcessEditorMessage(
                             Message::PriorityChanged(i),
                         ))
                 };
@@ -359,30 +319,25 @@ impl GroupEditor {
 
         let actions_row = row![
             button("OK")
-                .on_press(AppMessage::GroupEditorMessage(Message::Ok))
-                .style(move |_, _status| {
-                    if name_ok && affinity_ok {
-                        button::Style {
-                            background: Some(Background::Color(Color::from_rgb(0.2, 0.4, 0.8))),
-                            text_color: Color::WHITE,
-                            ..Default::default()
-                        }
+                .on_press(AppMessage::CustomProcessEditorMessage(Message::Ok))
+                .style(move |_, _| button::Style {
+                    background: Some(Background::Color(if name_ok && affinity_ok {
+                        Color::from_rgb(0.2, 0.4, 0.8)
                     } else {
-                        button::Style {
-                            background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
-                            text_color: Color::WHITE,
-                            ..Default::default()
-                        }
-                    }
+                        Color::from_rgb(0.3, 0.3, 0.3)
+                    })),
+                    text_color: Color::WHITE,
+                    ..Default::default()
                 }),
-            button("Cancel").on_press(AppMessage::GroupEditorMessage(Message::Cancel)),
+            button("Cancel")
+                .on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
         ]
         .spacing(10);
 
-        let delete_actions = if !self.editing_name.is_empty() {
+        let delete_row = if !self.editing_name.is_empty() {
             row![
                 Space::with_width(Length::Fill),
-                button("Delete Group").on_press(AppMessage::GroupEditorMessage(Message::Delete))
+                button("Remove").on_press(AppMessage::CustomProcessEditorMessage(Message::Delete))
             ]
             .spacing(10)
         } else {
@@ -392,11 +347,10 @@ impl GroupEditor {
         let content = column![
             text(title).size(18),
             name_row,
-            flags_row,
             container(affinity_section).padding(10),
             container(priority_section).padding(10),
             actions_row,
-            delete_actions,
+            delete_row,
         ]
         .spacing(15)
         .padding(20);

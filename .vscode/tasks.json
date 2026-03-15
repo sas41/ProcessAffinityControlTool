@@ -71,6 +71,33 @@
         "clear": true
       },
       "problemMatcher": "$rustc"
+    },
+    {
+      "label": "perf: allow sampling",
+      "type": "shell",
+      "command": "sudo sysctl -w kernel.perf_event_paranoid=1",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "cargo flamegraph",
+      "type": "shell",
+      "command": "cargo flamegraph --bin process_affinity_control_tool",
+      "dependsOn": ["perf: allow sampling"],
+      "dependsOrder": "sequence",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
     }
   ]
 }

@@ -30,6 +30,7 @@ pub struct CpuStats {
 ///
 /// Only attributes that were actually changed are stored — an `Option::None`
 /// means "we did not touch this attribute, so there is nothing to restore".
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct OriginalProcessState {
     /// The affinity mask the process had **before** we first set it.
@@ -285,24 +286,30 @@ impl ProcessOverwatch {
             let (affinity_mask, priority, is_blacklist) = {
                 let cfg = self.inner.user_config.lock().unwrap();
 
-                let auto_mode = *self.inner.auto_mode.lock().unwrap();
-                let auto_detections = self.inner.auto_mode_detections.lock().unwrap();
-                let is_auto_detected = auto_mode
-                    && auto_detections.contains(&process_name)
-                    && cfg.process_assignments.get(&process_name).is_none();
-
-                let group = if is_auto_detected {
-                    cfg.default_group()
+                // Custom processes take precedence over group assignments.
+                if let Some(cp) = cfg.custom_process(&process_name) {
+                    let mask = cp.affinity.as_ref().map_or(0, |a| a.affinity_mask);
+                    (mask, cp.priority.clone(), false)
                 } else {
-                    cfg.group_for_process(&process_name)
-                };
+                    let auto_mode = *self.inner.auto_mode.lock().unwrap();
+                    let auto_detections = self.inner.auto_mode_detections.lock().unwrap();
+                    let is_auto_detected = auto_mode
+                        && auto_detections.contains(&process_name)
+                        && cfg.process_assignments.get(&process_name).is_none();
 
-                match group {
-                    None => continue,
-                    Some(g) if g.is_blacklist => (0u64, None, true),
-                    Some(g) => {
-                        let mask = g.affinity.as_ref().map(|a| a.affinity_mask);
-                        (mask.unwrap_or(0), g.priority.clone(), false)
+                    let group = if is_auto_detected {
+                        cfg.default_group()
+                    } else {
+                        cfg.group_for_process(&process_name)
+                    };
+
+                    match group {
+                        None => continue,
+                        Some(g) if g.is_blacklist => (0u64, None, true),
+                        Some(g) => {
+                            let mask = g.affinity.as_ref().map(|a| a.affinity_mask);
+                            (mask.unwrap_or(0), g.priority.clone(), false)
+                        }
                     }
                 }
             };

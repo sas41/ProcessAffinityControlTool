@@ -1,134 +1,128 @@
-use eframe::egui::{self, Color32, RichText};
+use iced::widget::{container, text, Column, Row};
+use iced::{Shadow, Vector, widget::button};
 
-/// Compact pill showing a process name, sized tightly to its text.
+/// Coloured button style with distinct hover (brightens) and press (darkens + shadow) states.
+/// Pass the base background colour; text is always white.
+pub fn colored_button_style(
+    base: iced::Color,
+) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
+    use iced::{Background, Border};
+    move |_, status| {
+        let bg = match status {
+            button::Status::Active => base,
+            button::Status::Hovered => iced::Color::from_rgba(
+                (base.r * 1.25).min(1.0),
+                (base.g * 1.25).min(1.0),
+                (base.b * 1.25).min(1.0),
+                1.0,
+            ),
+            button::Status::Pressed => iced::Color::from_rgba(
+                base.r * 0.60,
+                base.g * 0.60,
+                base.b * 0.60,
+                1.0,
+            ),
+            button::Status::Disabled => {
+                iced::Color::from_rgba(base.r, base.g, base.b, 0.4)
+            }
+        };
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color: iced::Color::WHITE,
+            border: Border { radius: 4.0.into(), ..Default::default() },
+            shadow: if matches!(status, button::Status::Pressed) {
+                Shadow { color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6), offset: Vector::new(0.0, 2.0), blur_radius: 4.0 }
+            } else {
+                Shadow::default()
+            },
+        }
+    }
+}
+
+/// Render a Bootstrap icon glyph as a plain text widget at the given size.
+pub fn icon(glyph: iced_fonts::Bootstrap) -> iced::widget::Text<'static> {
+    text(char::from(glyph).to_string())
+        .font(iced_fonts::BOOTSTRAP_FONT)
+        .size(14.0)
+}
+
+/// Render a Bootstrap icon glyph at the given size, centered in a fixed square.
+pub fn icon_button_content(glyph: iced_fonts::Bootstrap) -> container::Container<'static, crate::gui::Message> {
+    container(
+        text(char::from(glyph).to_string())
+            .font(iced_fonts::BOOTSTRAP_FONT)
+            .size(16.0),
+    )
+    .width(28)
+    .height(28)
+    .center_x(28)
+    .center_y(28)
+}
+use iced::{Alignment, Background, Border, Color};
+
+/// Compact pill showing a process name with a bordered pill shape.
 /// Dimmed when the process is not currently running.
-pub fn process_pill(ui: &mut egui::Ui, name: &str, is_running: bool) {
-    let text_col = if is_running {
-        Color32::from_gray(220)
+pub fn process_pill<Message>(name: String, is_running: bool) -> container::Container<'static, Message> {
+    let (text_col, border_col, bg_col) = if is_running {
+        (
+            Color::from_rgb(0.86, 0.86, 0.86),
+            Color::from_rgb(0.45, 0.45, 0.45),
+            Color::from_rgba(0.22, 0.22, 0.22, 1.0),
+        )
     } else {
-        Color32::from_gray(105)
+        (
+            Color::from_rgb(0.41, 0.41, 0.41),
+            Color::from_rgb(0.30, 0.30, 0.30),
+            Color::from_rgba(0.16, 0.16, 0.16, 1.0),
+        )
     };
-    let border_col = if is_running {
-        Color32::from_gray(115)
-    } else {
-        Color32::from_gray(55)
-    };
 
-    // Measure the text first so we can size the pill to fit exactly.
-    let font_id = egui::FontId::proportional(12.0);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(name.to_string(), font_id.clone(), text_col);
-
-    let pad_x = 6.0;
-    let pad_y = 3.0;
-    let desired = egui::vec2(galley.size().x + pad_x * 2.0, galley.size().y + pad_y * 2.0);
-
-    // Reserve the exact footprint in the layout.
-    let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
-
-    if ui.is_rect_visible(rect) {
-        let painter = ui.painter();
-        // ── Pill background ───────────────────────────────────────────────
-        painter.rect_filled(rect, 5.0, Color32::from_gray(32));
-        // ── Pill border ───────────────────────────────────────────────────
-        painter.rect_stroke(
-            rect,
-            5.0,
-            egui::Stroke::new(1.0, border_col),
-            egui::StrokeKind::Inside,
-        );
-        // ── Pill text label ───────────────────────────────────────────────
-        painter.galley(rect.min + egui::vec2(pad_x, pad_y), galley, text_col);
-    }
-
-    let _ = response;
+    container(text(name).size(12).color(text_col))
+        .padding([3, 8])
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(bg_col)),
+            border: Border {
+                color: border_col,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            ..Default::default()
+        })
 }
 
-/// Compact pill with an inline ✏ button that fires `edit_out` when clicked.
-/// Used for Custom Process entries where clicking ✏ reassigns the process.
-pub fn process_pill_edit(ui: &mut egui::Ui, name: &str, edit_out: &mut Option<String>) {
-    let text_col = Color32::from_gray(200);
-    let font_id = egui::FontId::proportional(12.0);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(name.to_string(), font_id, text_col);
 
-    let pad_x = 6.0;
-    let pad_y = 3.0;
-    let btn_w = 14.0; // approximate width of the ✏ icon
-    let gap = 4.0;
-    let desired = egui::vec2(
-        galley.size().x + pad_x * 2.0 + gap + btn_w,
-        galley.size().y + pad_y * 2.0,
-    );
-
-    // Reserve the exact footprint in the layout.
-    let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
-
-    if ui.is_rect_visible(rect) {
-        let painter = ui.painter();
-        // ── Pill background ───────────────────────────────────────────────
-        painter.rect_filled(rect, 5.0, Color32::from_gray(32));
-        // ── Pill border ───────────────────────────────────────────────────
-        painter.rect_stroke(
-            rect,
-            5.0,
-            egui::Stroke::new(1.0, Color32::from_gray(90)),
-            egui::StrokeKind::Inside,
-        );
-        // ── Pill text label ───────────────────────────────────────────────
-        painter.galley(rect.min + egui::vec2(pad_x, pad_y), galley, text_col);
-    }
-
-    // ── Edit (✏) button ───────────────────────────────────────────────────
-    let btn_rect = egui::Rect::from_min_size(
-        egui::pos2(rect.max.x - btn_w - pad_x * 0.5, rect.min.y),
-        egui::vec2(btn_w + pad_x * 0.5, rect.height()),
-    );
-    let btn_resp = ui.interact(btn_rect, ui.id().with(name).with("x"), egui::Sense::click());
-    if btn_resp.hovered() {
-        // ── Edit button hover highlight ───────────────────────────────────
-        ui.painter()
-            .rect_filled(btn_rect, 3.0, Color32::from_gray(50));
-    }
-    // ── Edit button icon ──────────────────────────────────────────────────
-    ui.painter().text(
-        btn_rect.center(),
-        egui::Align2::CENTER_CENTER,
-        "✏",
-        egui::FontId::proportional(10.0),
-        if btn_resp.hovered() {
-            Color32::from_gray(230)
-        } else {
-            Color32::from_gray(150)
-        },
-    );
-    if btn_resp.clicked() {
-        *edit_out = Some(name.to_string());
-    }
-}
-
-/// Numeric stat badge: large coloured number with a small label underneath.
+/// Numeric stat badge: large coloured number on top, small label below.
 /// Used in the Status tab header row.
-pub fn stat_badge(ui: &mut egui::Ui, label: &str, value: usize, col: Color32) {
-    ui.vertical(|ui| {
-        // ── Value (large, coloured) ───────────────────────────────────────
-        ui.label(RichText::new(value.to_string()).heading().color(col));
-        // ── Label (small, muted) ──────────────────────────────────────────
-        ui.label(RichText::new(label).small());
-    });
+pub fn stat_badge<'a, Message>(label: &'a str, value: usize, col: Color) -> Column<'a, Message> {
+    Column::new()
+        .align_x(Alignment::Center)
+        .spacing(2)
+        .push(
+            text(value.to_string())
+                .size(24)
+                .color(col)
+                .font(iced::Font {
+                    weight: iced::font::Weight::Bold,
+                    ..Default::default()
+                }),
+        )
+        .push(text(label).size(12).color(Color::from_rgb(0.7, 0.7, 0.7)))
 }
 
 /// Small filled colour square followed by a text label.
 /// Used in the topology diagram legend.
-pub fn color_swatch(ui: &mut egui::Ui, col: Color32, text: &str) {
-    ui.horizontal(|ui| {
-        // ── Colour square ─────────────────────────────────────────────────
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, col);
-        // ── Swatch label ──────────────────────────────────────────────────
-        ui.label(RichText::new(text).small());
-        ui.add_space(6.0);
-    });
+pub fn color_swatch<Message: 'static>(col: Color, text_str: String) -> Row<'static, Message> {
+    Row::new()
+        .align_y(Alignment::Center)
+        .spacing(6)
+        .push(
+            container("")
+                .width(12)
+                .height(12)
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(col)),
+                    ..Default::default()
+                }),
+        )
+        .push(text(text_str).size(12))
 }

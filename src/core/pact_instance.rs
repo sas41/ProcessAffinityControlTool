@@ -1,5 +1,5 @@
 use crate::core::pact_config::PACTConfig;
-use crate::core::process_config::ProcessGroup;
+use crate::core::process_config::{CustomProcess, ProcessGroup};
 use crate::core::process_overwatch::{ProcessOverwatch, ScanHandler};
 use std::fs;
 use std::path::PathBuf;
@@ -292,6 +292,47 @@ impl PACTInstance {
             .collect();
         v.sort();
         v
+    }
+
+    // ── Custom process CRUD ───────────────────────────────────────────────
+
+    pub fn get_custom_processes(&self) -> Vec<CustomProcess> {
+        self.pact_process_overwatch
+            .user_config_lock()
+            .custom_processes
+            .clone()
+    }
+
+    pub fn add_custom_process(&mut self, cp: CustomProcess) -> bool {
+        let ok = self
+            .pact_process_overwatch
+            .user_config_lock_mut()
+            .add_custom_process(cp);
+        if ok {
+            self.pact_process_overwatch.request_fresh_scan();
+            self.persist_and_notify();
+        }
+        ok
+    }
+
+    pub fn update_custom_process(&mut self, old_name: &str, cp: CustomProcess) -> bool {
+        let ok = self
+            .pact_process_overwatch
+            .user_config_lock_mut()
+            .update_custom_process(old_name, cp);
+        if ok {
+            self.pact_process_overwatch.request_fresh_scan();
+            self.persist_and_notify();
+        }
+        ok
+    }
+
+    pub fn remove_custom_process(&mut self, name: &str) {
+        self.pact_process_overwatch
+            .user_config_lock_mut()
+            .remove_custom_process(name);
+        self.pact_process_overwatch.request_fresh_scan();
+        self.persist_and_notify();
     }
 
     // ── Running / live process info ───────────────────────────────────────

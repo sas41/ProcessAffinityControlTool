@@ -1,4 +1,4 @@
-use crate::core::process_config::ProcessGroup;
+use crate::core::process_config::{CustomProcess, ProcessGroup};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -129,12 +129,20 @@ pub struct PACTConfig {
     #[serde(rename = "ProcessAssignments")]
     pub process_assignments: CaseInsensitiveHashMap<String>,
 
+    /// Processes with individual affinity/priority settings, independent of groups.
+    #[serde(rename = "CustomProcesses", default)]
+    pub custom_processes: Vec<CustomProcess>,
+
     /// Launchers whose child processes get auto-promoted via Auto Mode.
     #[serde(rename = "AutoModeLaunchers")]
     pub auto_mode_launchers: CaseInsensitiveHashSet,
 
     #[serde(rename = "ScanInterval")]
     pub scan_interval: u64,
+
+    /// Hide to the system tray instead of quitting when the window is closed.
+    #[serde(rename = "MinimizeToTray", default)]
+    pub minimize_to_tray: bool,
 }
 
 impl Default for PACTConfig {
@@ -163,10 +171,12 @@ impl Default for PACTConfig {
         }
 
         Self {
-            groups: Vec::new(), // fresh start — no default groups
+            groups: Vec::new(),
             process_assignments: CaseInsensitiveHashMap::new(),
+            custom_processes: Vec::new(),
             auto_mode_launchers,
             scan_interval: 3000,
+            minimize_to_tray: false,
         }
     }
 }
@@ -346,5 +356,49 @@ impl PACTConfig {
         } else {
             false
         }
+    }
+
+    // ── Custom process CRUD ───────────────────────────────────────────────
+
+    /// Find a custom process by name (case-insensitive).
+    pub fn custom_process(&self, name: &str) -> Option<&CustomProcess> {
+        let lower = name.to_lowercase();
+        self.custom_processes
+            .iter()
+            .find(|cp| cp.name.to_lowercase() == lower)
+    }
+
+    /// Add a custom process. Returns false if one with that name already exists.
+    pub fn add_custom_process(&mut self, cp: CustomProcess) -> bool {
+        if self.custom_process(&cp.name).is_some() {
+            return false;
+        }
+        self.custom_processes.push(cp);
+        true
+    }
+
+    /// Replace the custom process with the given name in-place.
+    /// Returns false if not found.
+    pub fn update_custom_process(&mut self, old_name: &str, cp: CustomProcess) -> bool {
+        let lower = old_name.to_lowercase();
+        if let Some(pos) = self
+            .custom_processes
+            .iter()
+            .position(|p| p.name.to_lowercase() == lower)
+        {
+            self.custom_processes[pos] = cp;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove a custom process by name. Returns false if not found.
+    pub fn remove_custom_process(&mut self, name: &str) -> bool {
+        let lower = name.to_lowercase();
+        let before = self.custom_processes.len();
+        self.custom_processes
+            .retain(|cp| cp.name.to_lowercase() != lower);
+        self.custom_processes.len() < before
     }
 }

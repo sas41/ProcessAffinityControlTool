@@ -22,6 +22,7 @@ impl Default for ProcessPriority {
 // ─── ProcessConfig (affinity + priority, both concrete) ──────────────────────
 
 /// Concrete affinity + priority settings — used where both values are known.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProcessConfig {
     #[serde(rename = "Priority")]
@@ -46,6 +47,7 @@ impl Default for ProcessConfig {
     }
 }
 
+#[allow(dead_code)]
 impl ProcessConfig {
     pub fn new(core_list: Vec<usize>, priority: ProcessPriority) -> Self {
         let max_count = num_cpus::get();
@@ -187,6 +189,27 @@ impl AffinityConfig {
     /// All logical cores on this machine.
     pub fn all_cores() -> Self {
         Self::new((0..num_cpus::get()).collect())
+    }
+}
+
+// ─── CustomProcess ────────────────────────────────────────────────────────────
+
+/// A single process with its own explicit affinity and priority settings,
+/// independent of any group.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CustomProcess {
+    pub name: String,
+    pub affinity: Option<AffinityConfig>,
+    pub priority: Option<ProcessPriority>,
+}
+
+impl CustomProcess {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            affinity: None,
+            priority: None,
+        }
     }
 }
 

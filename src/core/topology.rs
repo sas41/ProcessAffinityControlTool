@@ -17,6 +17,7 @@ pub enum CoreKind {
 
 // ─── TopologyPreset ───────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TopologyPreset {
     PerformanceCores,
@@ -30,6 +31,7 @@ pub enum TopologyPreset {
 
 // ─── LogicalProcessorInfo ─────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LogicalProcessorInfo {
     pub logical_index: usize,
@@ -59,12 +61,14 @@ impl CacheEntry {
 
 // ─── TopologyView structs ─────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ThreadView {
     pub logical_index: usize,
     pub kind: CoreKind,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PhysicalCoreView {
     pub physical_index: usize,
@@ -100,6 +104,7 @@ pub struct CpuTopology {
 }
 
 impl CpuTopology {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::discover()
     }
@@ -369,6 +374,7 @@ impl CpuTopology {
         result.into_iter().map(|(_, v)| v).collect()
     }
 
+    #[allow(dead_code)]
     pub fn get_numa_groups(&self) -> Vec<Vec<usize>> {
         let mut groups: HashMap<isize, Vec<usize>> = HashMap::new();
         for proc in &self.processors {
@@ -389,6 +395,7 @@ impl CpuTopology {
             && self.processors.iter().any(|p| p.kind == CoreKind::Ecore)
     }
 
+    #[allow(dead_code)]
     pub fn total_logical_processors(&self) -> usize {
         self.processors.len()
     }
@@ -552,6 +559,7 @@ pub fn format_cache_size(bytes: u64) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn format_freq_ghz(khz: u64) -> String {
     if khz == 0 {
         return String::new();

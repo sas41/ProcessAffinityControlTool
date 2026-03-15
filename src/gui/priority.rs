@@ -9,6 +9,7 @@ pub const PRIORITY_LABELS: &[&str] = &[
     "RealTime",
 ];
 
+#[allow(dead_code)]
 pub fn priority_label(i: usize) -> &'static str {
     PRIORITY_LABELS.get(i).copied().unwrap_or("Normal")
 }

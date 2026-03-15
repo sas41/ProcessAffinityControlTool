@@ -1,196 +1,177 @@
-use eframe::egui::{self, Color32, RichText};
+use iced::widget::{
+    button, checkbox, column, container, row, scrollable, slider, text, Column, Container, Space,
+};
+use iced::{Alignment, Background, Color, Font, Length};
+use iced::font;
 
-use crate::core::process_config::{AffinityConfig, ProcessGroup};
+use crate::gui::priority::{priority_to_index, PRIORITY_LABELS};
 use crate::gui::topology_diagram::group_color;
-use crate::ProcessAffinityApp;
+use crate::gui::{AppCache, Message as AppMessage};
 
-impl ProcessAffinityApp {
-    pub fn tab_options(&mut self, ui: &mut egui::Ui) {
-        // ── Outer scroll area ─────────────────────────────────────────────
-        egui::ScrollArea::vertical()
-            .id_salt("opts_scroll")
-            .show(ui, |ui| {
-                // ── Scan interval section ─────────────────────────────────
-                ui.heading("Scan Interval");
-                let mut interval = self.pact.pact_process_overwatch.scan_interval();
-                ui.horizontal(|ui| {
-                    // ── Interval slider ───────────────────────────────────
-                    if ui
-                        .add(egui::Slider::new(&mut interval, 500u64..=10000u64).suffix(" ms"))
-                        .changed()
-                    {
-                        self.pact.pact_process_overwatch.set_scan_interval(interval);
-                    }
-                });
+#[derive(Debug, Clone)]
+pub enum Message {
+    SetScanInterval(f32),
+    ResetConfig,
+    OpenGitHub,
+    SetMinimizeToTray(bool),
+}
 
-                ui.separator();
+pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessage> {
+    let scan_ms = cache.scan_interval as f32;
 
-                // ── Configuration file section ────────────────────────────
-                ui.heading("Configuration");
-                ui.horizontal(|ui| {
-                    // ── Import config button ──────────────────────────────
-                    if ui.button("Import Config…").clicked() {
-                        if let Some(p) = rfd::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .pick_file()
-                        {
-                            self.pact.import_config(p.to_string_lossy().as_ref());
-                        }
-                    }
-                    // ── Export config button ──────────────────────────────
-                    if ui.button("Export Config…").clicked() {
-                        if let Some(p) = rfd::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .save_file()
-                        {
-                            self.pact.export_config(p.to_string_lossy().as_ref());
-                        }
-                    }
-                    // ── Reset to defaults button ──────────────────────────
-                    if ui.button("Reset to Defaults").clicked() {
-                        self.pact.reset_config();
-                    }
-                });
+    // ── Scan Interval ─────────────────────────────────────────────────────────
+    let interval_section = column![
+        text("Scan Interval").size(16).font(Font {
+            weight: font::Weight::Bold,
+            ..Default::default()
+        }),
+        row![
+            slider(500.0f32..=10000.0, scan_ms, |v| {
+                AppMessage::OptionsMessage(Message::SetScanInterval(v))
+            })
+            .step(100.0f32)
+            .width(Length::Fixed(220.0)),
+            Space::with_width(8.0),
+            text(format!("{} ms", scan_ms as u64)).size(13),
+        ]
+        .align_y(Alignment::Center)
+        .spacing(4),
+    ]
+    .spacing(8);
 
-                ui.separator();
+    // ── Configuration ─────────────────────────────────────────────────────────
+    let config_section = column![
+        text("Configuration").size(16).font(Font {
+            weight: font::Weight::Bold,
+            ..Default::default()
+        }),
+        row![
+            button(text("Import Config…").size(13)).on_press(AppMessage::ImportConfig),
+            button(text("Export Config…").size(13)).on_press(AppMessage::ExportConfig),
+            button(text("Reset to Defaults").size(13))
+                .on_press(AppMessage::OptionsMessage(Message::ResetConfig)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(8);
 
-                // ── CPU topology info section ─────────────────────────────
-                ui.heading("CPU Topology");
-                let topo = crate::core::topology::get_topology();
+    // ── CPU Topology ──────────────────────────────────────────────────────────
+    let topology_section = column![
+        text("CPU Topology").size(16).font(Font {
+            weight: font::Weight::Bold,
+            ..Default::default()
+        }),
+        text(format!("Logical processors:  {}", num_cores))
+            .size(13)
+            .color(Color::from_rgb(0.75, 0.75, 0.75)),
+    ]
+    .spacing(8);
 
-                // ── Topology info grid ────────────────────────────────────
-                egui::Grid::new("topo_info")
-                    .num_columns(2)
-                    .spacing([16.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label("Logical processors:");
-                        ui.label(topo.total_logical_processors().to_string());
-                        ui.end_row();
-                        if topo.is_hybrid() {
-                            ui.label("P-cores:");
-                            ui.label(topo.get_performance_cores().len().to_string());
-                            ui.end_row();
-                            ui.label("E-cores:");
-                            ui.label(topo.get_efficiency_cores().len().to_string());
-                            ui.end_row();
-                        }
-                        let ccd = topo.get_ccd_groups();
-                        if !ccd.is_empty() {
-                            ui.label("AMD CCDs:");
-                            ui.label(ccd.len().to_string());
-                            ui.end_row();
-                        }
-                        let numa = topo.get_numa_groups();
-                        if numa.len() > 1 {
-                            ui.label("NUMA nodes:");
-                            ui.label(numa.len().to_string());
-                            ui.end_row();
-                        }
-                    });
+    // ── Groups overview ───────────────────────────────────────────────────────
+    let italic = Font {
+        style: iced::font::Style::Italic,
+        ..Default::default()
+    };
 
-                // ── Topology preset buttons ───────────────────────────────
-                // Only shown when the CPU has interesting topology (hybrid or CCD).
-                if topo.is_hybrid() || !topo.get_ccd_groups().is_empty() {
-                    ui.add_space(4.0);
-                    ui.label("Topology preset groups:");
-                    ui.horizontal_wrapped(|ui| {
-                        if topo.is_hybrid() {
-                            // ── Create P-core group button ─────────────────
-                            if ui.button("Create P-core group").clicked() {
-                                let cores = topo.get_performance_cores();
-                                let g = ProcessGroup {
-                                    name: "P-cores".into(),
-                                    affinity: Some(AffinityConfig::new(cores)),
-                                    priority: None,
-                                    is_default: false,
-                                    is_blacklist: false,
-                                };
-                                self.pact.add_group(g);
-                            }
-                            // ── Create E-core group button ─────────────────
-                            if ui.button("Create E-core group").clicked() {
-                                let cores = topo.get_efficiency_cores();
-                                let g = ProcessGroup {
-                                    name: "E-cores".into(),
-                                    affinity: Some(AffinityConfig::new(cores)),
-                                    priority: None,
-                                    is_default: false,
-                                    is_blacklist: false,
-                                };
-                                self.pact.add_group(g);
-                            }
-                        }
-                        // ── Create CCD group buttons (one per CCD) ─────────
-                        for (i, grp) in topo.get_ccd_groups().iter().enumerate() {
-                            let name = format!("CCD {i}");
-                            if ui.button(format!("Create {} group", name)).clicked() {
-                                let g = ProcessGroup {
-                                    name,
-                                    affinity: Some(AffinityConfig::new(grp.clone())),
-                                    priority: None,
-                                    is_default: false,
-                                    is_blacklist: false,
-                                };
-                                self.pact.add_group(g);
-                            }
-                        }
-                    });
-                }
+    let header_row = row![
+        text("Name").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(130.0)),
+        text("Affinity").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(80.0)),
+        text("Priority").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(80.0)),
+        text("Flags").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }).width(Length::Fixed(80.0)),
+        text("Processes").size(13).font(Font { weight: font::Weight::Bold, ..Default::default() }),
+    ]
+    .spacing(0);
 
-                ui.separator();
-
-                // ── Groups overview section ───────────────────────────────
-                ui.heading("Groups overview");
-                let groups = self.pact.get_groups();
-                if groups.is_empty() {
-                    ui.label(RichText::new("No groups configured.").italics());
-                } else {
-                    // ── Groups overview table ─────────────────────────────
-                    egui::Grid::new("groups_overview")
-                        .num_columns(5)
-                        .spacing([12.0, 4.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            // ── Table header row ──────────────────────────
-                            ui.strong("Name");
-                            ui.strong("Affinity");
-                            ui.strong("Priority");
-                            ui.strong("Flags");
-                            ui.strong("Processes");
-                            ui.end_row();
-
-                            // ── Table data rows (one per group) ───────────
-                            for (gi, g) in groups.iter().enumerate() {
-                                let col = group_color(gi);
-                                ui.label(RichText::new(&g.name).color(col));
-                                match &g.affinity {
-                                    Some(a) => ui.label(format!("{} cores", a.core_list.len())),
-                                    None => ui.label(
-                                        RichText::new("ignore").italics().color(Color32::GRAY),
-                                    ),
-                                };
-                                match &g.priority {
-                                    Some(p) => ui.label(format!("{:?}", p)),
-                                    None => ui.label(
-                                        RichText::new("ignore").italics().color(Color32::GRAY),
-                                    ),
-                                };
-                                let flags: String = [
-                                    g.is_default.then_some("default"),
-                                    g.is_blacklist.then_some("blacklist"),
-                                ]
-                                .iter()
-                                .flatten()
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                                ui.label(if flags.is_empty() { "-" } else { &flags });
-                                let count = self.pact.get_processes_in_group(&g.name).len();
-                                ui.label(count.to_string());
-                                ui.end_row();
-                            }
-                        });
-                }
-            });
+    // Pre-count assigned processes per group — O(M) instead of O(N×M).
+    let mut proc_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for (_, grp) in &cache.assigned {
+        *proc_counts.entry(grp.to_lowercase()).or_default() += 1;
     }
+
+    let group_rows = cache
+        .groups
+        .iter()
+        .enumerate()
+        .fold(Column::new().spacing(4), |col, (gi, g)| {
+            let affinity_str = match &g.affinity {
+                Some(aff) => format!("{} cores", aff.core_list.len()),
+                None => "ignore".to_string(),
+            };
+            let priority_str = match &g.priority {
+                Some(p) => PRIORITY_LABELS[priority_to_index(p)].to_string(),
+                None => "ignore".to_string(),
+            };
+            let flags_str = if g.is_default {
+                "default".to_string()
+            } else if g.is_blacklist {
+                "blacklist".to_string()
+            } else {
+                "-".to_string()
+            };
+            let proc_count = proc_counts.get(&g.name.to_lowercase()).copied().unwrap_or(0);
+            let gc = group_color(gi);
+
+            col.push(
+                row![
+                    text(g.name.clone()).size(13).color(gc).width(Length::Fixed(130.0)),
+                    text(affinity_str).size(13).font(italic).color(Color::from_rgb(0.65, 0.65, 0.65)).width(Length::Fixed(80.0)),
+                    text(priority_str).size(13).font(italic).color(Color::from_rgb(0.65, 0.65, 0.65)).width(Length::Fixed(80.0)),
+                    text(flags_str).size(13).color(Color::from_rgb(0.65, 0.65, 0.65)).width(Length::Fixed(80.0)),
+                    text(proc_count.to_string()).size(13).color(Color::from_rgb(0.65, 0.65, 0.65)),
+                ]
+                .spacing(0),
+            )
+        });
+
+    let groups_section = column![
+        text("Groups overview").size(16).font(Font {
+            weight: font::Weight::Bold,
+            ..Default::default()
+        }),
+        header_row,
+        group_rows,
+    ]
+    .spacing(8);
+
+    let divider = || {
+        container(Space::with_height(1.0))
+            .width(Length::Fill)
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgb(0.25, 0.25, 0.25))),
+                ..Default::default()
+            })
+    };
+
+    let github_btn = button(text("GitHub").size(13))
+        .on_press(AppMessage::OptionsMessage(Message::OpenGitHub));
+
+    let behavior_section = column![
+        text("Behavior").size(16).font(Font {
+            weight: iced::font::Weight::Bold,
+            ..Default::default()
+        }),
+        checkbox("Minimize to tray on close", cache.minimize_to_tray)
+            .on_toggle(|v| AppMessage::OptionsMessage(Message::SetMinimizeToTray(v))),
+    ]
+    .spacing(8);
+
+    let content = column![
+        interval_section,
+        divider(),
+        behavior_section,
+        divider(),
+        config_section,
+        divider(),
+        topology_section,
+        divider(),
+        groups_section,
+        divider(),
+        github_btn,
+    ]
+    .spacing(16)
+    .padding(14);
+
+    container(scrollable(content).height(Length::Fill))
 }
