@@ -12,7 +12,6 @@ pub struct AppCache {
     pub is_scanner_active: bool,
     pub is_auto_mode: bool,
     pub is_elevated: bool,
-    pub elevate_on_launch: bool,
     // `Vec<T>` is Rust's growable array/list (roughly `List<T>` in C#).
     pub groups: Vec<ProcessGroup>,
     pub running: Vec<String>,

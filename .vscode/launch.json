@@ -1,5 +1,12 @@
 {
   "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Debug (Windows Elevated Attach)",
+      "preLaunchTask": "run built exe (elevated)",
+      "configurations": ["Debug (Windows Attach Only)"]
+    }
+  ],
   "configurations": [
     {
       "name": "Debug (LLDB)",
@@ -52,17 +59,22 @@
     {
       "name": "Debug (Windows)",
       "type": "cppvsdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}\\target\\debug\\process_affinity_control_tool.exe",
-      "args": [],
-      "stopAtEntry": false,
-      "cwd": "${workspaceFolder}",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
       "environment": [
         { "name": "RUST_BACKTRACE", "value": "1" },
         { "name": "RUST_LOG", "value": "debug" }
-      ],
-      "console": "externalTerminal",
-      "preLaunchTask": "cargo build"
+      ]
+    },
+    {
+      "name": "Debug (Windows Attach Only)",
+      "type": "cppvsdbg",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "environment": [
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "RUST_LOG", "value": "debug" }
+      ]
     },
     {
       "name": "Run (no debugger)",

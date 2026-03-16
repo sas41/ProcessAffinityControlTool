@@ -27,7 +27,7 @@ use gui::tab_status;
 use gui::AppCache;
 use iced::widget::tooltip;
 use iced::widget::tooltip::Position as TooltipPosition;
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
 
@@ -207,7 +207,6 @@ fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
         is_scanner_active: pact.pact_process_overwatch.is_scanner_active(),
         is_auto_mode: pact.pact_process_overwatch.is_auto_mode(),
         is_elevated: is_elevated(),
-        elevate_on_launch: pact.elevate_on_launch(),
         groups: pact.get_groups(),
         running: pact.get_all_running_processes(),
         assigned: pact.get_assigned_processes(),
@@ -252,6 +251,7 @@ fn subscription(_app: &ProcessAffinityApp) -> Subscription<gui::Message> {
 fn main_window_settings(icon: Option<iced::window::Icon>) -> iced::window::Settings {
     #[cfg(target_os = "linux")]
     let mut settings = iced::window::Settings {
+        size: iced::Size::new(1024.0, 568.0),
         min_size: Some(iced::Size::new(700.0, 560.0)),
         exit_on_close_request: false,
         icon,
@@ -260,6 +260,7 @@ fn main_window_settings(icon: Option<iced::window::Icon>) -> iced::window::Setti
 
     #[cfg(not(target_os = "linux"))]
     let settings = iced::window::Settings {
+        size: iced::Size::new(1024.0, 568.0),
         min_size: Some(iced::Size::new(700.0, 560.0)),
         exit_on_close_request: false,
         icon,
@@ -583,10 +584,6 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 gui::tab_options::Message::OpenGitHub => {
                     let _ =
                         open::that("https://github.com/sas41/ProcessAffinityControlTool#readme");
-                }
-
-                gui::tab_options::Message::SetElevateOnLaunch(enabled) => {
-                    app.pact.set_elevate_on_launch(enabled);
                 }
             }
             app.is_elevated = is_elevated();
@@ -923,15 +920,40 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
     } else {
         tooltip(
             mode_badge,
-            "User mode is recommended on Linux. You can use sudo to manage elevated processes, with no guarantees.",
+            container(
+                text(
+                    "User mode is recommended on Linux. You can use sudo to manage elevated processes, with no guarantees.",
+                )
+                .size(12)
+                .color(Color::from_rgb(0.88, 0.88, 0.88))
+                .width(Length::Shrink),
+            )
+            .max_width(320)
+            .width(Length::Shrink),
             TooltipPosition::Bottom,
         )
+        .gap(10)
+        .padding(10)
+        .snap_within_viewport(true)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.11, 0.11, 0.11))),
+            border: Border {
+                color: Color::from_rgb(0.40, 0.40, 0.40),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        })
         .into()
     };
 
-    let top_row = row![container(tab_bar).width(Length::Fill), mode_badge]
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+    let top_row = row![
+        container(tab_bar).width(Length::Fill),
+        mode_badge,
+        Space::new().width(Length::Fixed(10.0))
+    ]
+    .align_y(Alignment::Center)
+    .width(Length::Fill);
 
     let content: Element<'_, gui::Message> = match &app.active_tab {
         gui::TabId::Status => tab_status::view(

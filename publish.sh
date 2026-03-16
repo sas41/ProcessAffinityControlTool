@@ -143,7 +143,7 @@ build_target() {
 
     # ── Run ───────────────────────────────────────────────────────────────────
     cd "$SCRIPT_DIR"
-    if [ "$PLATFORM" = "windows" ]; then
+    if [ "$PLATFORM" = "windows" ] && [ "$TARGET" = "x86_64-pc-windows-gnu" ]; then
         ensure_windows_compat_headers
     fi
 
@@ -153,20 +153,20 @@ build_target() {
         local CROSS_TARGET_DIR="$SCRIPT_DIR/target/cross-$PLATFORM"
         mkdir -p "$CROSS_TARGET_DIR"
          # shellcheck disable=SC2086
-         if [ "$PLATFORM" = "windows" ]; then
+         if [ "$PLATFORM" = "windows" ] && [ "$TARGET" = "x86_64-pc-windows-gnu" ]; then
              local WIN_C_INCLUDE="/project/.cross/windows-headers"
              HWLOC_SYS_USE_VENDORED=1 \
              C_INCLUDE_PATH="$WIN_C_INCLUDE${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}" \
              CPLUS_INCLUDE_PATH="$WIN_C_INCLUDE${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" \
              run_cross build --release --target "$TARGET" \
-                 --target-dir "$CROSS_TARGET_DIR" $FEATURES
+                  --target-dir "$CROSS_TARGET_DIR" $FEATURES
          else
              run_cross build --release --target "$TARGET" \
-                 --target-dir "$CROSS_TARGET_DIR" $FEATURES
+                  --target-dir "$CROSS_TARGET_DIR" $FEATURES
          fi
     else
         # shellcheck disable=SC2086
-        if [ "$PLATFORM" = "windows" ]; then
+        if [ "$PLATFORM" = "windows" ] && [ "$TARGET" = "x86_64-pc-windows-gnu" ]; then
             HWLOC_SYS_USE_VENDORED=1 \
             CFLAGS_x86_64_pc_windows_gnu="-I$WINDOWS_COMPAT_INC ${CFLAGS_x86_64_pc_windows_gnu:-}" \
             CPPFLAGS_x86_64_pc_windows_gnu="-I$WINDOWS_COMPAT_INC ${CPPFLAGS_x86_64_pc_windows_gnu:-}" \
@@ -225,7 +225,11 @@ for P in "${TARGETS[@]}"; do
             build_target "x86_64-unknown-linux-gnu" "linux"   ""     || FAILED+=(linux)
             ;;
         windows)
-            build_target "x86_64-pc-windows-gnu"    "windows" ".exe" || FAILED+=(windows)
+            if [ "$HOST" = "windows" ]; then
+                build_target "x86_64-pc-windows-msvc" "windows" ".exe" || FAILED+=(windows)
+            else
+                build_target "x86_64-pc-windows-gnu"  "windows" ".exe" || FAILED+=(windows)
+            fi
             ;;
         macos)
             if [ "$HOST" = "macos" ]; then

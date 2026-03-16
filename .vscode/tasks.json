@@ -109,6 +109,19 @@
         "clear": true
       },
       "problemMatcher": []
+    },
+    {
+      "label": "run built exe (elevated)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process -Verb RunAs -FilePath '${workspaceFolder}\\target\\debug\\process_affinity_control_tool.exe' -WorkingDirectory '${workspaceFolder}'\"",
+      "dependsOn": ["cargo build"],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
     }
   ]
 }

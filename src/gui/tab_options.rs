@@ -3,7 +3,7 @@
 use iced::font;
 
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, slider, text, Column, Container, Space,
+    button, column, container, row, scrollable, slider, text, Column, Container, Space,
 };
 
 use iced::{Alignment, Background, Color, Font, Length};
@@ -23,9 +23,6 @@ pub enum Message {
 
     /// Button pressed: open the project GitHub page.
     OpenGitHub,
-
-    /// Checkbox toggled: whether to relaunch elevated on startup.
-    SetElevateOnLaunch(bool),
 }
 
 /// Builds the full Options tab view from top to bottom sections.
@@ -70,24 +67,6 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
         ]
         .spacing(8)
         .align_y(Alignment::Center),
-    ]
-    .spacing(8);
-
-    let elevation_section = column![
-        text("Privileges").size(16).font(Font {
-            weight: font::Weight::Bold,
-            ..Default::default()
-        }),
-        checkbox(cache.elevate_on_launch)
-            .label("Run elevated on launch")
-            .on_toggle(|v| AppMessage::OptionsMessage(Message::SetElevateOnLaunch(v))),
-        text(if cache.is_elevated {
-            "Current session: elevated"
-        } else {
-            "Current session: standard user"
-        })
-        .size(12)
-        .color(Color::from_rgb(0.65, 0.65, 0.65)),
     ]
     .spacing(8);
 
@@ -241,8 +220,6 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
         interval_section,
         divider(),
         config_section,
-        divider(),
-        elevation_section,
         divider(),
         topology_section,
         divider(),
