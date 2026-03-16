@@ -1,6 +1,6 @@
 use crate::gui::Message as AppMessage;
 use iced::font;
-use iced::widget::{button, column, container, row, text, text_input, Row, Space};
+use iced::widget::{Row, Space, button, column, container, row, text, text_input};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 /// Modal editor state for creating or editing one process-to-group assignment.
 ///

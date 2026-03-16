@@ -8,7 +8,13 @@ mod gui;
 // `use` imports names; `::` is namespace/type path navigation like C# `.`.
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::path::PathBuf;
+
 use core::topology::TopologyView;
+use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -16,7 +22,6 @@ use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
-use gui::AppCache;
 use iced::widget::{button, column, container, scrollable, text};
 use iced::{Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
@@ -77,7 +82,7 @@ fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
     let menu = Menu::new();
     let _ = menu.append(&show_item);
     let _ = menu.append(&quit_item);
-    let mut builder = TrayIconBuilder::new()
+    let builder = TrayIconBuilder::new()
         .with_icon(icon)
         .with_menu(Box::new(menu))
         .with_tooltip("PACT")
@@ -143,6 +148,12 @@ pub struct ProcessAffinityApp {
 
     /// Live tray handle when available.
     pub(crate) tray_state: Option<TrayState>,
+
+    /// Track currently open UI windows to prevent duplicates.
+    pub window_ids: Vec<iced::window::Id>,
+
+    /// True while a window open request has been issued but not yet observed.
+    pub window_open_pending: bool,
 }
 
 // `impl Trait for Type` defines a trait implementation (similar to implementing a C# interface/base contract).
@@ -171,6 +182,8 @@ impl Default for ProcessAffinityApp {
             process_filter: String::new(),
             icon_rgba,
             tray_state,
+            window_ids: Vec::new(),
+            window_open_pending: false,
         }
     }
 }
@@ -205,10 +218,167 @@ fn subscription(_app: &ProcessAffinityApp) -> Subscription<gui::Message> {
             None
         }
     });
-    let close_req = iced::window::close_requests().map(|_| gui::Message::CloseRequested);
+    let close_req = iced::window::close_requests().map(gui::Message::CloseRequested);
+    let window_opened = iced::window::open_events().map(gui::Message::WindowOpened);
+    let window_closed = iced::window::close_events().map(gui::Message::WindowClosed);
     let tray_poll =
         iced::time::every(Duration::from_millis(250)).map(|_| gui::Message::PollTrayEvents);
-    Subscription::batch([tick, mouse_release, close_req, tray_poll])
+    Subscription::batch([
+        tick,
+        mouse_release,
+        close_req,
+        window_opened,
+        window_closed,
+        tray_poll,
+    ])
+}
+
+fn main_window_settings(icon: Option<iced::window::Icon>) -> iced::window::Settings {
+    #[cfg(target_os = "linux")]
+    let mut settings = iced::window::Settings {
+        min_size: Some(iced::Size::new(700.0, 560.0)),
+        exit_on_close_request: false,
+        icon,
+        ..Default::default()
+    };
+
+    #[cfg(not(target_os = "linux"))]
+    let settings = iced::window::Settings {
+        min_size: Some(iced::Size::new(700.0, 560.0)),
+        exit_on_close_request: false,
+        icon,
+        ..Default::default()
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        settings.platform_specific.application_id =
+            "com.sas41.processaffinitycontroltool".to_string();
+    }
+
+    settings
+}
+
+fn open_or_focus_main_window(app: &mut ProcessAffinityApp) -> Task<gui::Message> {
+    if let Some(&existing) = app.window_ids.last() {
+        return iced::window::gain_focus(existing);
+    }
+
+    if app.window_open_pending {
+        return Task::none();
+    }
+
+    let icon =
+        iced::window::icon::from_rgba(app.icon_rgba.0.clone(), app.icon_rgba.1, app.icon_rgba.2)
+            .ok();
+    let (_, open_task) = iced::window::open(main_window_settings(icon));
+    app.window_open_pending = true;
+    open_task.map(gui::Message::WindowOpened)
+}
+
+#[cfg(target_os = "windows")]
+fn enforce_single_instance() -> bool {
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
+    use windows::Win32::System::Threading::CreateMutexW;
+    use windows::core::PCWSTR;
+
+    let name: Vec<u16> = "Global\\ProcessAffinityControlTool.Singleton"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe {
+        let handle = match CreateMutexW(None, false, PCWSTR(name.as_ptr())) {
+            Ok(handle) => handle,
+            Err(_) => return true,
+        };
+
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            let _ = CloseHandle(handle);
+            return false;
+        }
+
+        true
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn lock_file_path() -> Option<PathBuf> {
+    let mut dir = dirs::runtime_dir().or_else(dirs::data_local_dir)?;
+    dir.push("process_affinity_control_tool.lock");
+    Some(dir)
+}
+
+#[cfg(target_os = "linux")]
+fn enforce_single_instance() -> bool {
+    use std::fs::OpenOptions;
+
+    use nix::fcntl::{FlockArg, flock};
+
+    let Some(path) = lock_file_path() else {
+        return true;
+    };
+
+    let file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(_) => return true,
+    };
+
+    let fd = file.as_raw_fd();
+    if flock(fd, FlockArg::LockExclusiveNonblock).is_err() {
+        return false;
+    }
+
+    std::mem::forget(file);
+    true
+}
+
+#[cfg(target_os = "macos")]
+fn lock_file_path() -> Option<PathBuf> {
+    let mut dir = dirs::runtime_dir().or_else(dirs::data_local_dir)?;
+    dir.push("process_affinity_control_tool.lock");
+    Some(dir)
+}
+
+#[cfg(target_os = "macos")]
+fn enforce_single_instance() -> bool {
+    use std::fs::OpenOptions;
+
+    let Some(path) = lock_file_path() else {
+        return true;
+    };
+
+    let file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(_) => return true,
+    };
+
+    let fd = file.as_raw_fd();
+    unsafe {
+        if libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) != 0 {
+            return false;
+        }
+    }
+
+    std::mem::forget(file);
+    true
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn enforce_single_instance() -> bool {
+    true
 }
 
 /// Central message dispatcher for the UI event loop.
@@ -468,9 +638,21 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
             app.dragging_process = None;
         }
 
-        gui::Message::CloseRequested => {
+        gui::Message::CloseRequested(id) => {
             // Close only the current window; the daemon keeps running in the tray.
-            return iced::window::latest().and_then(iced::window::close);
+            return iced::window::close(id);
+        }
+
+        gui::Message::WindowOpened(id) => {
+            app.window_open_pending = false;
+            if !app.window_ids.contains(&id) {
+                app.window_ids.push(id);
+            }
+        }
+
+        gui::Message::WindowClosed(id) => {
+            app.window_open_pending = false;
+            app.window_ids.retain(|&wid| wid != id);
         }
 
         gui::Message::PollTrayEvents => {
@@ -481,65 +663,45 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
             }
 
             if let Some(tray) = &app.tray_state {
+                // A single user interaction can emit multiple tray/menu events on Windows.
+                // Coalesce them into one intent so we do not open duplicate windows.
+                let mut request_open_window = false;
+                let mut request_quit = false;
+
                 // `try_recv()` is non-blocking, so polling tray events does not stall UI updates.
-                if let Ok(
-                    tray_icon::TrayIconEvent::Click {
-                        button: tray_icon::MouseButton::Left,
-                        button_state: tray_icon::MouseButtonState::Up,
-                        ..
+                while let Ok(ev) = tray_icon::TrayIconEvent::receiver().try_recv() {
+                    if matches!(
+                        ev,
+                        tray_icon::TrayIconEvent::Click {
+                            button: tray_icon::MouseButton::Left,
+                            button_state: tray_icon::MouseButtonState::Up,
+                            ..
+                        } | tray_icon::TrayIconEvent::DoubleClick {
+                            button: tray_icon::MouseButton::Left,
+                            ..
+                        }
+                    ) {
+                        request_open_window = true;
                     }
-                    | tray_icon::TrayIconEvent::DoubleClick {
-                        button: tray_icon::MouseButton::Left,
-                        ..
-                    },
-                ) = tray_icon::TrayIconEvent::receiver().try_recv()
-                {
-                    let icon = iced::window::icon::from_rgba(
-                        app.icon_rgba.0.clone(),
-                        app.icon_rgba.1,
-                        app.icon_rgba.2,
-                    )
-                    .ok();
-                    let mut settings = iced::window::Settings {
-                        min_size: Some(iced::Size::new(700.0, 560.0)),
-                        exit_on_close_request: false,
-                        icon,
-                        ..Default::default()
-                    };
-                    #[cfg(target_os = "linux")]
-                    {
-                        settings.platform_specific.application_id =
-                            "com.sas41.processaffinitycontroltool".to_string();
-                    }
-                    let (_, open_task) = iced::window::open(settings);
-                    return open_task.map(|_| gui::Message::Tick);
                 }
 
-                if let Ok(ev) = tray_icon::menu::MenuEvent::receiver().try_recv() {
+                while let Ok(ev) = tray_icon::menu::MenuEvent::receiver().try_recv() {
                     if ev.id == tray.show_id {
-                        let icon = iced::window::icon::from_rgba(
-                            app.icon_rgba.0.clone(),
-                            app.icon_rgba.1,
-                            app.icon_rgba.2,
-                        )
-                        .ok();
-                        let mut settings = iced::window::Settings {
-                            min_size: Some(iced::Size::new(700.0, 560.0)),
-                            exit_on_close_request: false,
-                            icon,
-                            ..Default::default()
-                        };
-                        #[cfg(target_os = "linux")]
-                        {
-                            settings.platform_specific.application_id =
-                                "com.sas41.processaffinitycontroltool".to_string();
-                        }
-                        let (_, open_task) = iced::window::open(settings);
-                        return open_task.map(|_| gui::Message::Tick);
+                        request_open_window = true;
                     } else if ev.id == tray.quit_id {
-                        app.pact.stop_scan_handler();
-                        return iced::exit();
+                        request_quit = true;
                     }
+                }
+
+                if request_quit {
+                    app.pact.stop_scan_handler();
+                    return iced::exit();
+                }
+
+                if request_open_window {
+                    // Execute one open/focus action per poll tick even if multiple matching
+                    // events were drained above.
+                    return open_or_focus_main_window(app);
                 }
             }
         }
@@ -700,6 +862,10 @@ fn main() -> iced::Result {
         return Ok(());
     }
 
+    if !enforce_single_instance() {
+        return Ok(());
+    }
+
     // `Result<T, E>` is a success/error return type (like returning value-or-exception outcome explicitly).
     // Linux tray integration requires GTK initialization on the main thread.
     #[cfg(target_os = "linux")]
@@ -743,24 +909,6 @@ fn main() -> iced::Result {
         1
     }
 
-    /// Build consistent window settings (icon + platform id).
-    fn main_window_settings(icon: Option<iced::window::Icon>) -> iced::window::Settings {
-        let mut settings = iced::window::Settings {
-            min_size: Some(iced::Size::new(700.0, 560.0)),
-            exit_on_close_request: false,
-            icon,
-            ..Default::default()
-        };
-
-        #[cfg(target_os = "linux")]
-        {
-            settings.platform_specific.application_id =
-                "com.sas41.processaffinitycontroltool".to_string();
-        }
-
-        settings
-    }
-
     /// Create initial state and open the main window.
     fn boot() -> (ProcessAffinityApp, Task<gui::Message>) {
         let (rgba, w, h) = load_icon_rgba();
@@ -770,8 +918,9 @@ fn main() -> iced::Result {
 
         let mut app = ProcessAffinityApp::default();
         app.topology_group_repeat = parse_topology_group_repeat_arg();
+        app.window_open_pending = true;
 
-        (app, open_task.map(|_| gui::Message::Tick))
+        (app, open_task.map(gui::Message::WindowOpened))
     }
 
     iced::daemon(boot, update, daemon_view)

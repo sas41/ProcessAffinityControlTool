@@ -38,8 +38,8 @@ use sysinfo::{CpuRefreshKind, RefreshKind, System};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{
-    GetPriorityClass, GetProcessAffinityMask, OpenProcess, SetPriorityClass,
-    SetProcessAffinityMask, PROCESS_ALL_ACCESS,
+    GetPriorityClass, GetProcessAffinityMask, OpenProcess, PROCESS_ALL_ACCESS, SetPriorityClass,
+    SetProcessAffinityMask,
 };
 
 /// CPU usage and frequency snapshot.
@@ -473,11 +473,11 @@ impl ProcessOverwatch {
     #[cfg(target_os = "windows")]
     fn process_name_for_pid(pid: u32) -> Option<String> {
         unsafe {
-            use windows::core::PWSTR;
             use windows::Win32::System::Threading::{
-                OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-                PROCESS_QUERY_LIMITED_INFORMATION,
+                OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+                QueryFullProcessImageNameW,
             };
+            use windows::core::PWSTR;
 
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
             let mut buf = vec![0u16; 260];
@@ -544,11 +544,7 @@ impl ProcessOverwatch {
 
             let priority_class = if read_priority {
                 let cls = GetPriorityClass(handle);
-                if cls != 0 {
-                    Some(cls)
-                } else {
-                    None
-                }
+                if cls != 0 { Some(cls) } else { None }
             } else {
                 None
             };
@@ -636,7 +632,7 @@ impl ProcessOverwatch {
     /// Restores process affinity from recorded mask (Linux).
     #[cfg(target_os = "linux")]
     fn restore_process(pid: u32, original: &OriginalProcessState) {
-        use nix::sched::{sched_setaffinity, CpuSet};
+        use nix::sched::{CpuSet, sched_setaffinity};
         use nix::unistd::Pid as NixPid;
 
         if let Some(mask) = original.affinity_mask {
@@ -712,7 +708,7 @@ impl ProcessOverwatch {
         affinity_mask: u64,
         _priority: Option<ProcessPriority>,
     ) -> bool {
-        use nix::sched::{sched_setaffinity, CpuSet};
+        use nix::sched::{CpuSet, sched_setaffinity};
         use nix::unistd::Pid as NixPid;
 
         if affinity_mask == 0 {

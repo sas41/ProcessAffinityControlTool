@@ -50,6 +50,21 @@
       "preLaunchTask": "cargo build (debug)"
     },
     {
+      "name": "Debug (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\target\\debug\\process_affinity_control_tool.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "RUST_LOG", "value": "debug" }
+      ],
+      "console": "integratedTerminal",
+      "preLaunchTask": "cargo build (debug)"
+    },
+    {
       "name": "Run (no debugger)",
       "type": "lldb",
       "request": "launch",
@@ -67,13 +82,21 @@
       }
     },
     {
-      "name": "Profile (flamegraph)",
+      "name": "Debug Topology Report (LLDB)",
       "type": "lldb",
       "request": "launch",
-      "preLaunchTask": "cargo flamegraph",
-      "program": "/bin/true",
+      "cargo": {
+        "args": ["run", "--bin", "process_affinity_control_tool", "--", "--topology-report"],
+        "filter": {
+          "name": "process_affinity_control_tool",
+          "kind": "bin"
+        }
+      },
       "args": [],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
     }
   ]
 }

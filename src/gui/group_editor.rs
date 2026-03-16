@@ -1,12 +1,12 @@
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
+    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, ProcessGroup};
-use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
-use crate::gui::topology_diagram::draw_core_selector;
 use crate::gui::Message as AppMessage;
+use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
+use crate::gui::topology_diagram::draw_core_selector;
 
 fn group_core_toggle_message(index: usize, checked: bool) -> AppMessage {
     AppMessage::GroupEditorMessage(Message::CoreToggled(index, checked))
@@ -57,7 +57,10 @@ pub struct GroupEditor {
 
     pub result: Option<ProcessGroup>,
 
+    /// Set to true only after explicit delete confirmation.
     pub delete_requested: bool,
+    /// True when the delete confirmation state is visible.
+    pub confirm_delete: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +81,12 @@ pub enum Message {
     SelectCCD(usize),
     Ok,
     Cancel,
+    /// Enter delete confirmation state (does not delete yet).
     Delete,
+    /// Final destructive action after confirmation prompt.
+    ConfirmDelete,
+    /// Cancel delete confirmation and keep editing.
+    CancelDelete,
 }
 
 impl GroupEditor {
@@ -140,6 +148,7 @@ impl GroupEditor {
             priority_index: g.priority.as_ref().map_or(2, priority_to_index),
             result: None,
             delete_requested: false,
+            confirm_delete: false,
         }
     }
 
@@ -252,8 +261,16 @@ impl GroupEditor {
                 self.open = false;
             }
             Message::Delete => {
+                if !self.editing_name.is_empty() {
+                    self.confirm_delete = true;
+                }
+            }
+            Message::ConfirmDelete => {
                 self.delete_requested = true;
                 self.open = false;
+            }
+            Message::CancelDelete => {
+                self.confirm_delete = false;
             }
         }
     }
@@ -412,33 +429,55 @@ impl GroupEditor {
             }
         };
 
-        let actions_row = row![
-            ok_button,
-            button("Cancel").on_press(AppMessage::GroupEditorMessage(Message::Cancel)),
-        ]
-        .spacing(10);
+        let mut footer_row = Row::new().spacing(10).align_y(Alignment::Center);
 
-        let delete_actions = if !self.editing_name.is_empty() {
-            row![
-                Space::new().width(Length::Fill),
+        if !self.editing_name.is_empty() {
+            let delete_button = if self.confirm_delete {
+                button("Confirm Delete")
+                    .style(|_, _| button::Style {
+                        background: Some(Background::Color(Color::from_rgb(0.65, 0.2, 0.2))),
+                        text_color: Color::WHITE,
+                        ..Default::default()
+                    })
+                    .on_press(AppMessage::GroupEditorMessage(Message::ConfirmDelete))
+            } else {
                 button("Delete Group").on_press(AppMessage::GroupEditorMessage(Message::Delete))
-            ]
-            .spacing(10)
-        } else {
-            Row::new()
-        };
+            };
 
-        let content = column![
+            footer_row = footer_row.push(delete_button);
+
+            if self.confirm_delete {
+                footer_row = footer_row.push(
+                    button("Keep Group")
+                        .on_press(AppMessage::GroupEditorMessage(Message::CancelDelete)),
+                );
+            }
+        }
+
+        footer_row = footer_row
+            .push(Space::new().width(Length::Fill))
+            .push(button("Cancel").on_press(AppMessage::GroupEditorMessage(Message::Cancel)))
+            .push(ok_button);
+
+        let mut content = column![
             text(title).size(18),
             name_row,
             flags_row,
             container(affinity_section).padding(10),
             container(priority_section).padding(10),
-            actions_row,
-            delete_actions,
         ]
         .spacing(15)
         .padding(20);
+
+        if self.confirm_delete {
+            content = content.push(
+                text("Deleting a group cannot be undone. Confirm to delete permanently.")
+                    .size(13)
+                    .color(Color::from_rgb(0.95, 0.55, 0.55)),
+            );
+        }
+
+        content = content.push(footer_row);
 
         let dialog = container(scrollable(content).height(Length::Shrink))
             .max_width(860)

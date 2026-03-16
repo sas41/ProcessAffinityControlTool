@@ -35,6 +35,42 @@ For Pact 1.1.0, please check help.txt for a list of commands, or type the help c
 If you find this tool helpful and wish to donate, you can do so here: https://www.paypal.me/sas41
 ---
 
+## Development
+
+For local debugging and development, use Cargo directly:
+
+- `cargo run --bin process_affinity_control_tool`
+- `cargo check`
+- `cargo test`
+
+Optional diagnostics:
+
+- `cargo run --bin process_affinity_control_tool -- --topology-report`
+
+## Session Notes (2026-03-16)
+
+- Fixed duplicate tray-open behavior by draining tray/menu event queues and coalescing to one open/focus action per poll tick.
+- Added cross-platform single-instance protection:
+  - Windows uses a named global mutex.
+  - Linux/macOS use a non-blocking lock file (`flock`) in runtime/local data directory.
+- Added single-window behavior: tray "Show Window" now focuses the existing window if one is already open instead of creating a second one.
+- Updated editor modals (Group + Custom Process):
+  - Footer layout now places delete on the left and cancel/ok on the right.
+  - Delete action now requires explicit confirmation before removal.
+- Simplified local debugging setup:
+  - Removed custom VS Code shell build script/task and flamegraph launch task.
+  - Standardized on direct Cargo tasks (`build`, `run`, `check`, `test`, `clippy`).
+
+### Key Files Changed
+
+- `src/main.rs`
+- `src/gui/mod.rs`
+- `src/gui/group_editor.rs`
+- `src/gui/custom_process_editor.rs`
+- `Cargo.toml`
+- `.vscode/tasks.json`
+- `.vscode/launch.json`
+
 # Gallery:
 #### PACT for Windows (PACTWPF):
 #### PACT for Windows Overview/Tutorial (4 minutes)

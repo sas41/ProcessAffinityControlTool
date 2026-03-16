@@ -6,9 +6,8 @@
 // - While dragging, the original pill is dimmed in place and a ghost pill is drawn in an overlay.
 
 use iced::advanced::{
-    layout, mouse, overlay, renderer,
-    widget::{tree, Tree},
-    Clipboard, Layout, Shell, Widget,
+    Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
+    widget::{Tree, tree},
 };
 use iced::{
     Background, Border, Color, Element, Event, Length, Point, Rectangle, Shadow, Size, Vector,

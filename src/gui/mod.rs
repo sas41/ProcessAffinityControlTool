@@ -84,7 +84,11 @@ pub enum Message {
     HideGroupsHelp,
 
     /// OS close button was pressed; we decide whether to hide or quit.
-    CloseRequested,
+    CloseRequested(iced::window::Id),
+    /// A window was successfully opened.
+    WindowOpened(iced::window::Id),
+    /// A window was closed.
+    WindowClosed(iced::window::Id),
     /// Polls tray icon and menu events at ~250 ms intervals.
     PollTrayEvents,
 

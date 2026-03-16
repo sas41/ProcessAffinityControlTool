@@ -1,13 +1,13 @@
 // Modal editor for creating or updating a custom process rule.
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
+    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
 };
 
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
 
-use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
+use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
 use crate::gui::topology_diagram::draw_core_selector;
 
 use crate::gui::Message as AppMessage;
@@ -47,6 +47,9 @@ pub struct CustomProcessEditor {
 
     /// Set when `Message::Delete` is chosen for an existing rule.
     pub delete_requested: bool,
+
+    /// Controls whether the destructive delete confirmation is currently shown.
+    pub confirm_delete: bool,
 }
 
 /// User actions emitted by this editor UI.
@@ -80,6 +83,10 @@ pub enum Message {
     Cancel,
     /// Request removal of the currently edited rule.
     Delete,
+    /// Confirm removal after the warning state is shown.
+    ConfirmDelete,
+    /// Dismiss delete warning and keep editing.
+    CancelDelete,
 }
 
 impl CustomProcessEditor {
@@ -133,6 +140,7 @@ impl CustomProcessEditor {
             priority_index: cp.priority.as_ref().map_or(2, priority_to_index),
             result: None,
             delete_requested: false,
+            confirm_delete: false,
         }
     }
 
@@ -222,8 +230,16 @@ impl CustomProcessEditor {
             }
             Message::Cancel => self.open = false,
             Message::Delete => {
+                if !self.editing_name.is_empty() {
+                    self.confirm_delete = true;
+                }
+            }
+            Message::ConfirmDelete => {
                 self.delete_requested = true;
                 self.open = false;
+            }
+            Message::CancelDelete => {
+                self.confirm_delete = false;
             }
         }
     }
@@ -388,32 +404,57 @@ impl CustomProcessEditor {
             }
         };
 
-        let actions_row = row![
-            ok_button,
-            button("Cancel").on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
-        ]
-        .spacing(10);
+        let mut footer_row = Row::new().spacing(10).align_y(Alignment::Center);
 
-        let delete_row = if !self.editing_name.is_empty() {
-            row![
-                Space::new().width(Length::Fill),
-                button("Remove").on_press(AppMessage::CustomProcessEditorMessage(Message::Delete))
-            ]
-            .spacing(10)
-        } else {
-            Row::new()
-        };
+        if !self.editing_name.is_empty() {
+            let delete_button = if self.confirm_delete {
+                button("Confirm Delete")
+                    .style(|_, _| button::Style {
+                        background: Some(Background::Color(Color::from_rgb(0.65, 0.2, 0.2))),
+                        text_color: Color::WHITE,
+                        ..Default::default()
+                    })
+                    .on_press(AppMessage::CustomProcessEditorMessage(
+                        Message::ConfirmDelete,
+                    ))
+            } else {
+                button("Delete").on_press(AppMessage::CustomProcessEditorMessage(Message::Delete))
+            };
 
-        let content = column![
+            footer_row = footer_row.push(delete_button);
+
+            if self.confirm_delete {
+                footer_row = footer_row.push(button("Keep Process").on_press(
+                    AppMessage::CustomProcessEditorMessage(Message::CancelDelete),
+                ));
+            }
+        }
+
+        footer_row = footer_row
+            .push(Space::new().width(Length::Fill))
+            .push(
+                button("Cancel").on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
+            )
+            .push(ok_button);
+
+        let mut content = column![
             text(title).size(18),
             name_row,
             container(affinity_section).padding(10),
             container(priority_section).padding(10),
-            actions_row,
-            delete_row,
         ]
         .spacing(15)
         .padding(20);
+
+        if self.confirm_delete {
+            content = content.push(
+                text("Deleting this custom process rule cannot be undone. Confirm to remove it.")
+                    .size(13)
+                    .color(Color::from_rgb(0.95, 0.55, 0.55)),
+            );
+        }
+
+        content = content.push(footer_row);
 
         let dialog = container(scrollable(content).height(Length::Shrink))
             .max_width(860)
