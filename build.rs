@@ -1,6 +1,27 @@
-#[cfg(target_os = "windows")]
 fn main() {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os != "windows" {
+        return;
+    }
+
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+
+    println!("cargo:rerun-if-changed=assets/icon/PACT.ico");
+    println!("cargo:rerun-if-changed=build.rs");
+
     let mut res = winres::WindowsResource::new();
+    if target_env == "gnu" {
+        if let Ok(path) = std::env::var("WINDRES") {
+            if !path.trim().is_empty() {
+                res.set_windres_path(&path);
+            }
+        } else if target.contains("x86_64-pc-windows-gnu") {
+            res.set_windres_path("x86_64-w64-mingw32-windres");
+            res.set_ar_path("x86_64-w64-mingw32-ar");
+        }
+    }
+
     res.set_icon("assets/icon/PACT.ico");
     res.set_manifest(
         r#"
@@ -16,7 +37,12 @@ fn main() {
 "#,
     );
     res.compile().expect("failed to compile Windows resources");
-}
 
-#[cfg(not(target_os = "windows"))]
-fn main() {}
+    if target_env == "gnu" {
+        let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
+        println!("cargo:rustc-link-search=native={out_dir}");
+        println!("cargo:rustc-link-arg-bin=process_affinity_control_tool=-Wl,--whole-archive");
+        println!("cargo:rustc-link-arg-bin=process_affinity_control_tool=-lresource");
+        println!("cargo:rustc-link-arg-bin=process_affinity_control_tool=-Wl,--no-whole-archive");
+    }
+}

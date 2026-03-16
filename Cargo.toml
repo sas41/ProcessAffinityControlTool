@@ -31,7 +31,7 @@ windows = { version = "*", features = [
 ] }
 windows-elevate = "*"
 
-[target.'cfg(windows)'.build-dependencies]
+[build-dependencies]
 winres = "*"
 
 [target.'cfg(target_os = "linux")'.dependencies]

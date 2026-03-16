@@ -133,13 +133,16 @@ build_target() {
         rustup target add "$TARGET" 2>/dev/null || true
     fi
 
-    # ── Features ──────────────────────────────────────────────────────────────
+    # ── Features / release flags ──────────────────────────────────────────────
     # hwlocality-sys needs to build hwloc from source when cross-compiling
     # because pkg-config can't find a target-platform hwloc on the host.
     local FEATURES=""
     if [ "$HOST" != "$PLATFORM" ]; then
         FEATURES="--features hwlocality/vendored"
     fi
+
+    # Publish builds should not carry debug info in the executable.
+    local RELEASE_CONFIG="--config profile.release.debug=false"
 
     # ── Run ───────────────────────────────────────────────────────────────────
     cd "$SCRIPT_DIR"
@@ -153,26 +156,30 @@ build_target() {
         local CROSS_TARGET_DIR="$SCRIPT_DIR/target/cross-$PLATFORM"
         mkdir -p "$CROSS_TARGET_DIR"
          # shellcheck disable=SC2086
-         if [ "$PLATFORM" = "windows" ] && [ "$TARGET" = "x86_64-pc-windows-gnu" ]; then
-             local WIN_C_INCLUDE="/project/.cross/windows-headers"
-             HWLOC_SYS_USE_VENDORED=1 \
-             C_INCLUDE_PATH="$WIN_C_INCLUDE${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}" \
-             CPLUS_INCLUDE_PATH="$WIN_C_INCLUDE${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" \
-             run_cross build --release --target "$TARGET" \
-                  --target-dir "$CROSS_TARGET_DIR" $FEATURES
-         else
-             run_cross build --release --target "$TARGET" \
-                  --target-dir "$CROSS_TARGET_DIR" $FEATURES
-         fi
+          if [ "$PLATFORM" = "windows" ] && [ "$TARGET" = "x86_64-pc-windows-gnu" ]; then
+              local WIN_C_INCLUDE="/project/.cross/windows-headers"
+              HWLOC_SYS_USE_VENDORED=1 \
+              RUSTFLAGS="-C target-feature=+crt-static${RUSTFLAGS:+ $RUSTFLAGS}" \
+              WINDRES="x86_64-w64-mingw32-windres" \
+              C_INCLUDE_PATH="$WIN_C_INCLUDE${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}" \
+              CPLUS_INCLUDE_PATH="$WIN_C_INCLUDE${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" \
+              run_cross build --release --target "$TARGET" $RELEASE_CONFIG \
+                   --target-dir "$CROSS_TARGET_DIR" $FEATURES
+          else
+              run_cross build --release --target "$TARGET" $RELEASE_CONFIG \
+                   --target-dir "$CROSS_TARGET_DIR" $FEATURES
+          fi
     else
         # shellcheck disable=SC2086
         if [ "$PLATFORM" = "windows" ] && [ "$TARGET" = "x86_64-pc-windows-gnu" ]; then
             HWLOC_SYS_USE_VENDORED=1 \
+            RUSTFLAGS="-C target-feature=+crt-static${RUSTFLAGS:+ $RUSTFLAGS}" \
+            WINDRES="x86_64-w64-mingw32-windres" \
             CFLAGS_x86_64_pc_windows_gnu="-I$WINDOWS_COMPAT_INC ${CFLAGS_x86_64_pc_windows_gnu:-}" \
             CPPFLAGS_x86_64_pc_windows_gnu="-I$WINDOWS_COMPAT_INC ${CPPFLAGS_x86_64_pc_windows_gnu:-}" \
-            cargo build --release --target "$TARGET" $FEATURES
+            cargo build --release --target "$TARGET" $RELEASE_CONFIG $FEATURES
         else
-            cargo build --release --target "$TARGET" $FEATURES
+            cargo build --release --target "$TARGET" $RELEASE_CONFIG $FEATURES
         fi
     fi
 
@@ -228,6 +235,7 @@ for P in "${TARGETS[@]}"; do
             if [ "$HOST" = "windows" ]; then
                 build_target "x86_64-pc-windows-msvc" "windows" ".exe" || FAILED+=(windows)
             else
+                warn "Cross-building Windows from Linux/macOS uses GNU toolchain (x86_64-pc-windows-gnu), which can differ from native Windows MSVC builds."
                 build_target "x86_64-pc-windows-gnu"  "windows" ".exe" || FAILED+=(windows)
             fi
             ;;
