@@ -8,7 +8,7 @@
 use iced::font;
 use iced::widget::container::Style as ContainerStyle;
 use iced::widget::{
-    Column, Container, Row, Space, button, column, container, row, scrollable, text, text_input,
+    button, column, container, row, scrollable, text, text_input, Column, Container, Row, Space,
 };
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
 

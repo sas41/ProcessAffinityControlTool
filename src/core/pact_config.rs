@@ -154,6 +154,14 @@ pub struct PACTConfig {
     /// Process scan interval in milliseconds.
     #[serde(rename = "ScanInterval")]
     pub scan_interval: u64,
+
+    /// Whether the app should request elevation on launch.
+    #[serde(rename = "ElevateOnLaunch", default)]
+    pub elevate_on_launch: bool,
+
+    /// Legacy field kept for compatibility with older config files.
+    #[serde(rename = "ElevationPromptPending", default)]
+    pub elevation_prompt_pending: bool,
 }
 
 impl Default for PACTConfig {
@@ -182,6 +190,12 @@ impl Default for PACTConfig {
             auto_mode_launchers.insert(name.to_string());
         }
 
+        #[cfg(target_os = "windows")]
+        let (elevate_on_launch, elevation_prompt_pending) = (true, false);
+
+        #[cfg(not(target_os = "windows"))]
+        let (elevate_on_launch, elevation_prompt_pending) = (false, false);
+
         Self {
             groups: Vec::new(),
             process_assignments: CaseInsensitiveHashMap::new(),
@@ -189,6 +203,8 @@ impl Default for PACTConfig {
             auto_mode_launchers,
             // 3s is the baseline poll interval used when no config file exists yet.
             scan_interval: 3000,
+            elevate_on_launch,
+            elevation_prompt_pending,
         }
     }
 }

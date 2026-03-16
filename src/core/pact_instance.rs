@@ -74,6 +74,19 @@ impl PACTInstance {
         self.pact_process_overwatch.request_fresh_scan();
     }
 
+    pub fn elevate_on_launch(&self) -> bool {
+        self.pact_process_overwatch
+            .user_config_lock()
+            .elevate_on_launch
+    }
+
+    pub fn set_elevate_on_launch(&mut self, enabled: bool) {
+        self.pact_process_overwatch
+            .user_config_lock_mut()
+            .elevate_on_launch = enabled;
+        self.persist_and_notify();
+    }
+
     // Config persistence boundaries.
 
     pub fn read_config() -> PACTConfig {
@@ -84,11 +97,23 @@ impl PACTInstance {
             if let Ok(json) = fs::read_to_string(&path) {
                 // Rust note for C# readers: `::<PACTConfig>` is a turbofish explicit generic type.
                 if let Ok(cfg) = serde_json::from_str::<PACTConfig>(&json) {
-                    return cfg;
+                    return Self::apply_windows_elevation_defaults(cfg);
                 }
             }
         }
-        PACTConfig::default()
+        Self::apply_windows_elevation_defaults(PACTConfig::default())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn apply_windows_elevation_defaults(mut cfg: PACTConfig) -> PACTConfig {
+        cfg.elevate_on_launch = true;
+        cfg.elevation_prompt_pending = false;
+        cfg
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn apply_windows_elevation_defaults(cfg: PACTConfig) -> PACTConfig {
+        cfg
     }
 
     pub fn save_config(config: &PACTConfig) {
@@ -125,7 +150,9 @@ impl PACTInstance {
 
     pub fn reset_config(&mut self) {
         // Reset in-memory config first, then rescan, persist, and notify listeners.
-        *self.pact_process_overwatch.user_config_lock_mut() = PACTConfig::default();
+        let mut cfg = PACTConfig::default();
+        cfg.elevation_prompt_pending = false;
+        *self.pact_process_overwatch.user_config_lock_mut() = cfg;
         self.pact_process_overwatch.request_fresh_scan();
         self.persist_and_notify();
     }

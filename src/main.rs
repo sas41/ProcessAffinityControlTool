@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 /// Core application modules.
 // `mod` declares a source module (similar to a C# namespace/file being brought into this crate).
 mod core;
@@ -13,8 +15,8 @@ use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::path::PathBuf;
 
+use core::elevation::is_elevated;
 use core::topology::TopologyView;
-use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -22,8 +24,11 @@ use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
-use iced::widget::{button, column, container, scrollable, text};
-use iced::{Background, Border, Color, Element, Length, Settings, Subscription, Task};
+use gui::AppCache;
+use iced::widget::tooltip;
+use iced::widget::tooltip::Position as TooltipPosition;
+use iced::widget::{button, column, container, row, scrollable, text};
+use iced::{Alignment, Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
 
 /// Embedded PNG bytes for the app icon.
@@ -119,6 +124,12 @@ pub struct ProcessAffinityApp {
     /// CPU topology snapshot loaded at startup.
     pub topo_view: TopologyView,
 
+    /// Whether the process currently has elevated privileges.
+    pub is_elevated: bool,
+
+    /// Whether to show inaccessible-process list overlay.
+    pub inaccessible_list_open: bool,
+
     /// Multiplier used to duplicate topology groups for layout testing.
     pub topology_group_repeat: usize,
 
@@ -172,6 +183,8 @@ impl Default for ProcessAffinityApp {
             active_tab: gui::TabId::default(),
             cache,
             topo_view,
+            is_elevated: is_elevated(),
+            inaccessible_list_open: false,
             topology_group_repeat: 1,
             group_editor: None,
             process_editor: None,
@@ -193,11 +206,14 @@ fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
     AppCache {
         is_scanner_active: pact.pact_process_overwatch.is_scanner_active(),
         is_auto_mode: pact.pact_process_overwatch.is_auto_mode(),
+        is_elevated: is_elevated(),
+        elevate_on_launch: pact.elevate_on_launch(),
         groups: pact.get_groups(),
         running: pact.get_all_running_processes(),
         assigned: pact.get_assigned_processes(),
         custom_processes: pact.get_custom_processes(),
         protected_count: pact.pact_process_overwatch.protected_process_count(),
+        protected_names: pact.get_protected_processes(),
         cpu_stats: pact.pact_process_overwatch.cpu_stats(),
         launchers: pact.get_auto_mode_launchers(),
         detections: pact.get_auto_mode_detections(),
@@ -278,9 +294,9 @@ fn open_or_focus_main_window(app: &mut ProcessAffinityApp) -> Task<gui::Message>
 
 #[cfg(target_os = "windows")]
 fn enforce_single_instance() -> bool {
-    use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
-    use windows::Win32::System::Threading::CreateMutexW;
     use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::System::Threading::CreateMutexW;
 
     let name: Vec<u16> = "Global\\ProcessAffinityControlTool.Singleton"
         .encode_utf16()
@@ -313,7 +329,7 @@ fn lock_file_path() -> Option<PathBuf> {
 fn enforce_single_instance() -> bool {
     use std::fs::OpenOptions;
 
-    use nix::fcntl::{FlockArg, flock};
+    use nix::fcntl::{flock, FlockArg};
 
     let Some(path) = lock_file_path() else {
         return true;
@@ -430,6 +446,9 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 }
                 gui::tab_status::Message::RequestFreshScan => {
                     app.pact.request_fresh_scan();
+                }
+                gui::tab_status::Message::OpenInaccessibleList => {
+                    app.inaccessible_list_open = true;
                 }
             }
             app.cache = build_cache(&app.pact);
@@ -565,8 +584,21 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                     let _ =
                         open::that("https://github.com/sas41/ProcessAffinityControlTool#readme");
                 }
+
+                gui::tab_options::Message::SetElevateOnLaunch(enabled) => {
+                    app.pact.set_elevate_on_launch(enabled);
+                }
             }
+            app.is_elevated = is_elevated();
             app.cache = build_cache(&app.pact);
+        }
+
+        gui::Message::OpenInaccessibleList => {
+            app.inaccessible_list_open = true;
+        }
+
+        gui::Message::CloseInaccessibleList => {
+            app.inaccessible_list_open = false;
         }
 
         gui::Message::ProcessEditorMessage(msg) => {
@@ -789,6 +821,63 @@ fn view_groups_help() -> Element<'static, gui::Message> {
         .into()
 }
 
+fn view_inaccessible_processes_modal(names: Vec<String>) -> Element<'static, gui::Message> {
+    let list_text = if names.is_empty() {
+        "No inaccessible processes detected.".to_string()
+    } else {
+        names.join("\n")
+    };
+
+    let content = column![
+        text("Inaccessible Processes").size(18).font(iced::Font {
+            weight: iced::font::Weight::Bold,
+            ..Default::default()
+        }),
+        text("Processes that could not be modified due to permission limits.")
+            .size(13)
+            .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        container(scrollable(text(list_text).size(12)).height(Length::Fixed(260.0)))
+            .padding(10)
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgb(0.10, 0.10, 0.10))),
+                border: Border {
+                    color: Color::from_rgb(0.30, 0.30, 0.30),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }),
+        row![button(text("Close").size(13)).on_press(gui::Message::CloseInaccessibleList),]
+            .spacing(10)
+            .align_y(Alignment::Center),
+    ]
+    .spacing(12)
+    .padding(24);
+
+    let dialog = container(content)
+        .max_width(620)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
+            border: Border {
+                color: Color::from_rgb(0.38, 0.38, 0.38),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        });
+
+    container(dialog)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+            ..Default::default()
+        })
+        .into()
+}
+
 /// Render the app view for the active tab and overlays.
 fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
     let tab_bar = TabBar::new(gui::Message::TabSelected)
@@ -803,9 +892,46 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
         )
         .push(gui::TabId::Options, TabLabel::Text("Options".to_string()))
         .set_active_tab(&app.active_tab)
-        .tab_width(iced::Length::Shrink)
+        .tab_width(iced::Length::Fixed(112.0))
         .text_size(13.0)
         .padding(iced::Padding::from([5, 14]));
+
+    let mode_label = if app.cache.is_elevated {
+        text("Elevated Mode")
+            .size(13)
+            .color(Color::from_rgb(0.70, 0.92, 0.70))
+    } else {
+        text("User Mode")
+            .size(13)
+            .color(Color::from_rgb(0.85, 0.85, 0.85))
+    };
+
+    let mode_badge = container(mode_label)
+        .padding(iced::Padding::from([5, 14]))
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.20, 0.20, 0.20))),
+            border: Border {
+                color: Color::from_rgb(0.35, 0.35, 0.35),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        });
+
+    let mode_badge: Element<'_, gui::Message> = if app.cache.is_elevated {
+        mode_badge.into()
+    } else {
+        tooltip(
+            mode_badge,
+            "User mode is recommended on Linux. You can use sudo to manage elevated processes, with no guarantees.",
+            TooltipPosition::Bottom,
+        )
+        .into()
+    };
+
+    let top_row = row![container(tab_bar).width(Length::Fill), mode_badge]
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
 
     let content: Element<'_, gui::Message> = match &app.active_tab {
         gui::TabId::Status => tab_status::view(
@@ -825,7 +951,7 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
         gui::TabId::Options => tab_options::view(&app.cache, app.num_cores).into(),
     };
 
-    let main_layout = column![tab_bar, content];
+    let main_layout = column![top_row, content];
 
     if let Some(editor) = &app.group_editor {
         iced::widget::Stack::new()
@@ -846,6 +972,13 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
         iced::widget::Stack::new()
             .push(main_layout)
             .push(view_groups_help())
+            .into()
+    } else if app.inaccessible_list_open {
+        iced::widget::Stack::new()
+            .push(main_layout)
+            .push(view_inaccessible_processes_modal(
+                app.cache.protected_names.clone(),
+            ))
             .into()
     } else {
         main_layout.into()
@@ -919,6 +1052,8 @@ fn main() -> iced::Result {
         let mut app = ProcessAffinityApp::default();
         app.topology_group_repeat = parse_topology_group_repeat_arg();
         app.window_open_pending = true;
+        app.cache = build_cache(&app.pact);
+        app.is_elevated = is_elevated();
 
         (app, open_task.map(gui::Message::WindowOpened))
     }

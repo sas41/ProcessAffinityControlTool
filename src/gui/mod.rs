@@ -11,6 +11,8 @@ use crate::core::process_overwatch::CpuStats;
 pub struct AppCache {
     pub is_scanner_active: bool,
     pub is_auto_mode: bool,
+    pub is_elevated: bool,
+    pub elevate_on_launch: bool,
     // `Vec<T>` is Rust's growable array/list (roughly `List<T>` in C#).
     pub groups: Vec<ProcessGroup>,
     pub running: Vec<String>,
@@ -20,6 +22,7 @@ pub struct AppCache {
     /// Per-process affinity/priority settings, independent of groups.
     pub custom_processes: Vec<CustomProcess>,
     pub protected_count: usize,
+    pub protected_names: Vec<String>,
     pub cpu_stats: CpuStats,
     pub launchers: Vec<String>,
     pub detections: Vec<String>,
@@ -69,6 +72,9 @@ pub enum Message {
     ConfigureMessage(tab_configure::Message),
     AutoModeMessage(tab_auto_mode::Message),
     OptionsMessage(tab_options::Message),
+
+    OpenInaccessibleList,
+    CloseInaccessibleList,
 
     // Global messages.
     // Variant payload syntax: this case carries a `TabId` value.

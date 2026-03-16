@@ -1,4 +1,4 @@
-use iced::widget::{Column, Row, Space, button, column, container, text};
+use iced::widget::{button, column, container, text, Column, Row, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::ProcessGroup;

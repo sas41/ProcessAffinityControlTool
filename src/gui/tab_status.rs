@@ -1,6 +1,7 @@
 // Status tab UI.
+use iced::widget::tooltip::Position as TooltipPosition;
 use iced::widget::{
-    Column, Row, Space, button, column, container, progress_bar, row, scrollable, text,
+    button, column, container, progress_bar, row, scrollable, text, tooltip, Column, Row, Space,
 };
 use iced::{Alignment, Color, Element, Length};
 
@@ -16,6 +17,7 @@ pub enum Message {
     ToggleScanner,
     ToggleAutoMode,
     RequestFreshScan,
+    OpenInaccessibleList,
 }
 
 // `'a` is a lifetime parameter (roughly: how long borrowed data stays valid),
@@ -129,16 +131,32 @@ pub fn view<'a>(
     // - Assigned: running names that map to configured management rules.
     // - Inaccessible: processes skipped due to permission limits.
     // - Groups: configured process groups available for assignment.
+    let inaccessible_badge = {
+        let badge = stat_badge(
+            "Inaccessible",
+            cache.protected_count,
+            Color::from_rgb(1.0, 0.5, 0.5),
+        );
+
+        let btn = button(container(badge).padding([0, 2]))
+            .on_press(AppMessage::StatusMessage(Message::OpenInaccessibleList))
+            .style(|_, _| button::Style {
+                background: None,
+                text_color: Color::WHITE,
+                border: iced::Border::default(),
+                shadow: iced::Shadow::default(),
+                snap: false,
+            });
+
+        tooltip(btn, "Click to see a list", TooltipPosition::Top)
+    };
+
     let stats_row = row![
         stat_badge("Total", cache.running.len(), Color::from_rgb(0.5, 0.8, 1.0)),
         Space::new().width(12.0),
         stat_badge("Assigned", assigned_count, Color::from_rgb(0.5, 1.0, 0.5)),
         Space::new().width(12.0),
-        stat_badge(
-            "Inaccessible",
-            cache.protected_count,
-            Color::from_rgb(1.0, 0.5, 0.5)
-        ),
+        inaccessible_badge,
         Space::new().width(12.0),
         stat_badge(
             "Groups",

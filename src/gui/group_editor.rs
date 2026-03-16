@@ -1,12 +1,12 @@
 use iced::widget::{
-    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
+    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::{AffinityConfig, ProcessGroup};
-use crate::gui::Message as AppMessage;
-use crate::gui::priority::{PRIORITY_LABELS, index_to_priority, priority_to_index};
+use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
 use crate::gui::topology_diagram::draw_core_selector;
+use crate::gui::Message as AppMessage;
 
 fn group_core_toggle_message(index: usize, checked: bool) -> AppMessage {
     AppMessage::GroupEditorMessage(Message::CoreToggled(index, checked))

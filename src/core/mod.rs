@@ -4,6 +4,7 @@
 
 // `pub mod name;` declares a child module (loaded from `name.rs` or `name/mod.rs`)
 // and exposes it publicly (roughly like `public` visibility in C#).
+pub mod elevation;
 pub mod pact_config;
 pub mod pact_instance;
 pub mod process_config;
