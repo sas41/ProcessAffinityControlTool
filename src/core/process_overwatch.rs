@@ -64,6 +64,9 @@ pub struct OriginalProcessState {
 
     /// Original priority class, if priority was modified.
     pub priority_class: Option<u32>,
+
+    /// Original Linux niceness, if priority was modified.
+    pub niceness: Option<i32>,
 }
 
 /// Shared mutable state used by control code and scan thread.
@@ -88,6 +91,9 @@ struct ProcessOverwatchInner {
 
     /// Auto-mode detections.
     pub auto_mode_detections: Mutex<CaseInsensitiveHashSet>,
+
+    /// Session detections as (launcher, detected process) pairs.
+    pub auto_mode_detection_pairs: Mutex<Vec<(String, String)>>,
 
     /// Child PID to parent name cache for auto-mode checks.
     pub child_parent_pairs: Mutex<HashMap<u32, String>>,
@@ -131,6 +137,7 @@ impl ProcessOverwatch {
                 protected_processes: Mutex::new(HashSet::new()),
                 auto_mode: Mutex::new(true),
                 auto_mode_detections: Mutex::new(CaseInsensitiveHashSet::new()),
+                auto_mode_detection_pairs: Mutex::new(Vec::new()),
                 child_parent_pairs: Mutex::new(HashMap::new()),
                 fresh_scan_requested: Mutex::new(false),
                 scanner_active: Mutex::new(true),
@@ -199,6 +206,17 @@ impl ProcessOverwatch {
             .collect();
 
         v.sort();
+        v
+    }
+
+    /// Returns sorted auto-mode detections as (launcher, process) pairs.
+    pub fn auto_mode_detection_pairs_list(&self) -> Vec<(String, String)> {
+        let mut v = self.inner.auto_mode_detection_pairs.lock().unwrap().clone();
+        v.sort_by(|a, b| {
+            let al = a.0.to_lowercase();
+            let bl = b.0.to_lowercase();
+            al.cmp(&bl).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
+        });
         v
     }
 
@@ -283,43 +301,111 @@ impl ProcessOverwatch {
     pub fn update_child_parent_pairs(&self, system: &System) {
         let mut pairs: HashMap<u32, String> = HashMap::new();
         let mut detections = CaseInsensitiveHashSet::new();
+        let mut detection_pairs: Vec<(String, String)> = Vec::new();
+
+        let launchers: std::collections::HashSet<String> = self
+            .inner
+            .user_config
+            .lock()
+            .unwrap()
+            .auto_mode_launchers
+            .iter()
+            .cloned()
+            .collect();
+
+        let mut process_names: HashMap<u32, String> = HashMap::new();
+        let mut parents: HashMap<u32, u32> = HashMap::new();
 
         for (pid, process) in system.processes() {
-            let name_lc = process.name().to_string_lossy().to_lowercase();
+            let process_name = process.name().to_string_lossy().into_owned();
+            let name_lc = process_name.to_lowercase();
 
             if name_lc == "idle" || name_lc == "system" {
                 continue;
             }
 
             let pid_u32 = pid.as_u32();
+            process_names.insert(pid_u32, process_name.clone());
+
+            if launchers.contains(&name_lc) {
+                detections.insert(process_name.clone());
+            }
+
             {
                 let cached = self.inner.child_parent_pairs.lock().unwrap();
                 if let Some(parent) = cached.get(&pid_u32) {
                     pairs.insert(pid_u32, parent.clone());
-                    if !parent.is_empty() {
-                        let cfg = self.inner.user_config.lock().unwrap();
-                        if cfg.auto_mode_launchers.contains(parent.as_str()) {
-                            detections.insert(process.name().to_string_lossy().into_owned());
-                        }
-                    }
-                    continue;
                 }
             }
 
             if let Some(ppid) = process.parent() {
+                parents.insert(pid_u32, ppid.as_u32());
                 if let Some(parent_proc) = system.process(ppid) {
                     let parent_name = parent_proc.name().to_string_lossy().into_owned();
                     pairs.insert(pid_u32, parent_name.clone());
-                    let cfg = self.inner.user_config.lock().unwrap();
-                    if cfg.auto_mode_launchers.contains(&parent_name) {
-                        detections.insert(process.name().to_string_lossy().into_owned());
-                    }
+                }
+            }
+        }
+
+        let mut launcher_by_pid: HashMap<u32, Option<String>> = HashMap::new();
+
+        fn launcher_for_pid(
+            pid: u32,
+            parents: &HashMap<u32, u32>,
+            process_names: &HashMap<u32, String>,
+            launchers: &std::collections::HashSet<String>,
+            memo: &mut HashMap<u32, Option<String>>,
+        ) -> Option<String> {
+            if let Some(v) = memo.get(&pid) {
+                return v.clone();
+            }
+
+            let Some(name) = process_names.get(&pid) else {
+                memo.insert(pid, None);
+                return None;
+            };
+
+            if launchers.contains(&name.to_lowercase()) {
+                let launcher = Some(name.clone());
+                memo.insert(pid, launcher.clone());
+                return launcher;
+            }
+
+            let Some(parent) = parents.get(&pid).copied() else {
+                memo.insert(pid, None);
+                return None;
+            };
+
+            let result = launcher_for_pid(parent, parents, process_names, launchers, memo);
+            memo.insert(pid, result);
+            memo.get(&pid).cloned().unwrap_or(None)
+        }
+
+        let mut seen_pairs: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+
+        for pid in process_names.keys().copied() {
+            if let Some(launcher_name) = launcher_for_pid(
+                pid,
+                &parents,
+                &process_names,
+                &launchers,
+                &mut launcher_by_pid,
+            )
+                && let Some(name) = process_names.get(&pid)
+            {
+                detections.insert(name.clone());
+
+                let key = (launcher_name.to_lowercase(), name.to_lowercase());
+                if seen_pairs.insert(key) {
+                    detection_pairs.push((launcher_name, name.clone()));
                 }
             }
         }
 
         *self.inner.child_parent_pairs.lock().unwrap() = pairs;
         *self.inner.auto_mode_detections.lock().unwrap() = detections;
+        *self.inner.auto_mode_detection_pairs.lock().unwrap() = detection_pairs;
     }
 
     /// Main scan pass: resolve policy per process, snapshot once, then apply.
@@ -340,7 +426,6 @@ impl ProcessOverwatch {
             .collect();
 
         all_names.sort_unstable();
-        all_names.dedup();
 
         for (pid, process) in system.processes() {
             let pid_u32 = pid.as_u32();
@@ -355,13 +440,19 @@ impl ProcessOverwatch {
 
             let process_name = process.name().to_string_lossy().into_owned();
 
-            let (affinity_mask, priority, is_blacklist) = {
+            let (affinity_mask, priority, niceness, is_blacklist) = {
                 let cfg = self.inner.user_config.lock().unwrap();
 
                 // Custom per-process rule overrides group-based assignment.
                 if let Some(cp) = cfg.custom_process(&process_name) {
                     let mask = cp.affinity.as_ref().map_or(0, |a| a.affinity_mask);
-                    (mask, cp.priority.clone(), false)
+                    #[cfg(target_os = "linux")]
+                    let niceness = cp
+                        .niceness
+                        .or_else(|| cp.priority.as_ref().map(Self::priority_to_niceness));
+                    #[cfg(not(target_os = "linux"))]
+                    let niceness = None;
+                    (mask, cp.priority.clone(), niceness, false)
                 } else {
                     let auto_mode = *self.inner.auto_mode.lock().unwrap();
                     let auto_detections = self.inner.auto_mode_detections.lock().unwrap();
@@ -379,10 +470,16 @@ impl ProcessOverwatch {
 
                     match group {
                         None => continue,
-                        Some(g) if g.is_blacklist => (0u64, None, true),
+                        Some(g) if g.is_blacklist => (0u64, None, None, true),
                         Some(g) => {
                             let mask = g.affinity.as_ref().map(|a| a.affinity_mask);
-                            (mask.unwrap_or(0), g.priority.clone(), false)
+                            #[cfg(target_os = "linux")]
+                            let niceness = g
+                                .niceness
+                                .or_else(|| g.priority.as_ref().map(Self::priority_to_niceness));
+                            #[cfg(not(target_os = "linux"))]
+                            let niceness = None;
+                            (mask.unwrap_or(0), g.priority.clone(), niceness, false)
                         }
                     }
                 }
@@ -393,7 +490,7 @@ impl ProcessOverwatch {
             }
 
             let want_affinity = affinity_mask != 0;
-            let want_priority = priority.is_some();
+            let want_priority = priority.is_some() || niceness.is_some();
 
             if want_affinity || want_priority {
                 // Snapshot original state once so we can restore on shutdown.
@@ -418,7 +515,7 @@ impl ProcessOverwatch {
                 }
             }
 
-            let ok = Self::apply_to_process(pid_u32, affinity_mask, priority);
+            let ok = Self::apply_to_process(pid_u32, affinity_mask, priority, niceness);
 
             if ok {
                 current_set.insert(pid_u32);
@@ -559,6 +656,7 @@ impl ProcessOverwatch {
                 Some(OriginalProcessState {
                     affinity_mask,
                     priority_class,
+                    niceness: None,
                 })
             } else {
                 None
@@ -571,7 +669,7 @@ impl ProcessOverwatch {
     fn read_original_state(
         pid: u32,
         read_affinity: bool,
-        _read_priority: bool,
+        read_priority: bool,
     ) -> Option<OriginalProcessState> {
         use nix::sched::sched_getaffinity;
         use nix::unistd::Pid as NixPid;
@@ -591,10 +689,27 @@ impl ProcessOverwatch {
             None
         };
 
-        if affinity_mask.is_some() {
+        let niceness = if read_priority {
+            use nix::errno::Errno;
+            unsafe {
+                Errno::clear();
+                let v = libc::getpriority(libc::PRIO_PROCESS, pid);
+                let err = Errno::last_raw();
+                if v == -1 && err != 0 {
+                    None
+                } else {
+                    Some(v)
+                }
+            }
+        } else {
+            None
+        };
+
+        if affinity_mask.is_some() || niceness.is_some() {
             Some(OriginalProcessState {
                 affinity_mask,
                 priority_class: None,
+                niceness,
             })
         } else {
             None
@@ -649,6 +764,12 @@ impl ProcessOverwatch {
             }
             let _ = sched_setaffinity(nix_pid, &cpu_set);
         }
+
+        if let Some(nice) = original.niceness {
+            unsafe {
+                let _ = libc::setpriority(libc::PRIO_PROCESS, pid, nice);
+            }
+        }
     }
 
     /// Unsupported platforms perform no restoration.
@@ -656,11 +777,16 @@ impl ProcessOverwatch {
     fn restore_process(_pid: u32, _original: &OriginalProcessState) {}
 
     /// Applies affinity/priority and reports success.
-    fn apply_to_process(pid: u32, affinity_mask: u64, priority: Option<ProcessPriority>) -> bool {
-        if affinity_mask == 0 && priority.is_none() {
+    fn apply_to_process(
+        pid: u32,
+        affinity_mask: u64,
+        priority: Option<ProcessPriority>,
+        niceness: Option<i32>,
+    ) -> bool {
+        if affinity_mask == 0 && priority.is_none() && niceness.is_none() {
             return true;
         }
-        Self::set_process_affinity_and_priority_impl(pid, affinity_mask, priority)
+        Self::set_process_affinity_and_priority_impl(pid, affinity_mask, priority, niceness)
     }
 
     /// Applies affinity and priority via Windows APIs.
@@ -669,6 +795,7 @@ impl ProcessOverwatch {
         pid: u32,
         affinity_mask: u64,
         priority: Option<ProcessPriority>,
+        _niceness: Option<i32>,
     ) -> bool {
         use windows::Win32::System::Threading::{
             ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS,
@@ -710,24 +837,34 @@ impl ProcessOverwatch {
     fn set_process_affinity_and_priority_impl(
         pid: u32,
         affinity_mask: u64,
-        _priority: Option<ProcessPriority>,
+        priority: Option<ProcessPriority>,
+        niceness: Option<i32>,
     ) -> bool {
         use nix::sched::{sched_setaffinity, CpuSet};
         use nix::unistd::Pid as NixPid;
 
-        if affinity_mask == 0 {
-            return true;
+        let mut ok = true;
+
+        if affinity_mask != 0 {
+            let nix_pid = NixPid::from_raw(pid as i32);
+            let mut cpu_set = CpuSet::new();
+            for bit in 0..64usize {
+                if (affinity_mask >> bit) & 1 == 1 {
+                    let _ = cpu_set.set(bit);
+                }
+            }
+
+            ok &= sched_setaffinity(nix_pid, &cpu_set).is_ok();
         }
 
-        let nix_pid = NixPid::from_raw(pid as i32);
-        let mut cpu_set = CpuSet::new();
-        for bit in 0..64usize {
-            if (affinity_mask >> bit) & 1 == 1 {
-                let _ = cpu_set.set(bit);
+        let resolved_niceness = niceness.or_else(|| priority.as_ref().map(Self::priority_to_niceness));
+        if let Some(nice) = resolved_niceness {
+            unsafe {
+                ok &= libc::setpriority(libc::PRIO_PROCESS, pid, nice.clamp(-20, 19)) == 0;
             }
         }
 
-        sched_setaffinity(nix_pid, &cpu_set).is_ok()
+        ok
     }
 
     /// Unsupported platforms cannot apply changes.
@@ -736,8 +873,21 @@ impl ProcessOverwatch {
         _pid: u32,
         _affinity_mask: u64,
         _priority: Option<ProcessPriority>,
+        _niceness: Option<i32>,
     ) -> bool {
         false
+    }
+
+    #[cfg(target_os = "linux")]
+    fn priority_to_niceness(priority: &ProcessPriority) -> i32 {
+        match priority {
+            ProcessPriority::Idle => 19,
+            ProcessPriority::BelowNormal => 10,
+            ProcessPriority::Normal => 0,
+            ProcessPriority::AboveNormal => -5,
+            ProcessPriority::High => -10,
+            ProcessPriority::RealTime => -20,
+        }
     }
 }
 

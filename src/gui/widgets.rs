@@ -58,28 +58,17 @@ pub fn icon(glyph: iced::widget::Text<'static>) -> iced::widget::Text<'static> {
     glyph.size(14.0)
 }
 
-/// Render a 16px icon centered in a fixed 28x28 hit target.
-pub fn icon_button_content(
-    glyph: iced::widget::Text<'static>,
-) -> container::Container<'static, crate::gui::Message> {
-    container(glyph.size(16.0))
-        .width(28)
-        .height(28)
-        .center_x(28)
-        .center_y(28)
-}
-
 /// Compact bordered pill for a process name.
 ///
 /// `is_running` drives a simple visual state mapping:
 /// - running: brighter text/border/background for emphasis;
 /// - stopped: dimmed palette to de-emphasize inactive processes.
-pub fn process_pill<Message>(
+pub fn process_pill_badged_alert<Message: 'static>(
     name: String,
     is_running: bool,
+    badges: Vec<(iced::widget::Text<'static>, Color)>,
+    is_inaccessible: bool,
 ) -> container::Container<'static, Message> {
-    // `<Message>` is a generic type parameter (similar to C# `T`).
-    // `(a, b, c)` on the left destructures a tuple returned by the `if` expression.
     let (text_col, border_col, bg_col) = if is_running {
         (
             Color::from_rgb(0.86, 0.86, 0.86),
@@ -94,7 +83,31 @@ pub fn process_pill<Message>(
         )
     };
 
-    container(text(name).size(12).color(text_col))
+    let mut content = Row::new()
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .push(text(name).size(12).color(text_col));
+
+    for (glyph, color) in badges {
+        content = content.push(
+            container(glyph.size(11).color(color))
+                .width(14)
+                .height(14)
+                .center_x(14)
+                .center_y(14),
+        );
+    }
+
+    let (border_col, bg_col) = if is_inaccessible {
+        (
+            Color::from_rgb(0.75, 0.28, 0.28),
+            Color::from_rgb(0.34, 0.10, 0.10),
+        )
+    } else {
+        (border_col, bg_col)
+    };
+
+    container(content)
         .padding([3, 8])
         .style(move |_| iced::widget::container::Style {
             background: Some(Background::Color(bg_col)),

@@ -154,6 +154,10 @@ pub struct PACTConfig {
     /// Process scan interval in milliseconds.
     #[serde(rename = "ScanInterval")]
     pub scan_interval: u64,
+
+    /// Start UI hidden to tray on launch.
+    #[serde(rename = "LaunchMinimized", default)]
+    pub launch_minimized: bool,
 }
 
 impl Default for PACTConfig {
@@ -189,6 +193,7 @@ impl Default for PACTConfig {
             auto_mode_launchers,
             // 3s is the baseline poll interval used when no config file exists yet.
             scan_interval: 3000,
+            launch_minimized: false,
         }
     }
 }

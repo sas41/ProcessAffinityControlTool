@@ -1,4 +1,5 @@
 // `crate::...` starts from this Rust crate's root module (similar to a C# root namespace).
+use crate::core::pact_instance::AssignedProcess;
 use crate::core::process_config::{CustomProcess, ProcessGroup};
 use crate::core::process_overwatch::CpuStats;
 
@@ -15,17 +16,18 @@ pub struct AppCache {
     // `Vec<T>` is Rust's growable array/list (roughly `List<T>` in C#).
     pub groups: Vec<ProcessGroup>,
     pub running: Vec<String>,
-    /// Explicit group assignments as `(process_name, group_name)`.
-    // `(A, B)` is a tuple: fixed-size pair without field names.
-    pub assigned: Vec<(String, String)>,
+    /// Effective group assignments shown in the UI.
+    pub assigned: Vec<AssignedProcess>,
     /// Per-process affinity/priority settings, independent of groups.
     pub custom_processes: Vec<CustomProcess>,
     pub protected_count: usize,
     pub protected_names: Vec<String>,
+    pub managed_count: usize,
     pub cpu_stats: CpuStats,
     pub launchers: Vec<String>,
-    pub detections: Vec<String>,
+    pub detections: Vec<(String, String)>,
     pub scan_interval: u64,
+    pub launch_minimized: bool,
 }
 
 // `mod` declares child modules loaded from other files.
@@ -99,6 +101,8 @@ pub enum Message {
 
     /// Refreshes cached display data.
     Tick,
+    /// Drives lightweight UI-only animations.
+    SearchPulse,
 
     GroupEditorMessage(group_editor::Message),
     // `Option<T>` means maybe-a-value: `Some(T)` or `None` (nullable-like, but explicit).

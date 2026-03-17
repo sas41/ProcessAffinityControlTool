@@ -148,13 +148,27 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
         ..Default::default()
     });
 
-    // Detected names are session-only observations rendered read-only.
+    // Detected names are session-only observations rendered as launcher -> process rows.
     let detected_list = cache.detections.iter().cloned().fold(
         Column::new().spacing(4).padding(Padding {
             right: 14.0,
             ..Default::default()
         }),
-        |col, name| col.push(text(name).size(13).color(Color::from_rgb(0.65, 0.65, 0.65))),
+        |col, (launcher, detected)| {
+            col.push(
+                row![
+                    text(launcher)
+                        .size(13)
+                        .color(Color::from_rgb(0.86, 0.86, 0.86))
+                        .width(Length::Fixed(140.0)),
+                    text(detected)
+                        .size(13)
+                        .color(Color::from_rgb(0.65, 0.65, 0.65))
+                        .width(Length::Fill),
+                ]
+                .spacing(10),
+            )
+        },
     );
 
     // Right card: scrollable view of detections collected this run.
@@ -164,6 +178,23 @@ pub fn view<'a>(cache: &'a AppCache, new_launcher_name: &'a str) -> Container<'a
                 weight: font::Weight::Bold,
                 ..Default::default()
             }),
+            row![
+                text("Launcher")
+                    .size(12)
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Default::default()
+                    })
+                    .width(Length::Fixed(140.0)),
+                text("Detected")
+                    .size(12)
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Default::default()
+                    })
+                    .width(Length::Fill),
+            ]
+            .spacing(10),
             scrollable(detected_list)
                 .width(Length::Fill)
                 .height(Length::Fill),

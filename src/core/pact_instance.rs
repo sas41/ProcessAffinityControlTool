@@ -5,6 +5,20 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignedProcessSource {
+    Explicit,
+    Default,
+    AutoMode,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignedProcess {
+    pub name: String,
+    pub group: String,
+    pub source: AssignedProcessSource,
+}
+
 pub type ConfigUpdatedCallback = Box<dyn FnMut() + Send>;
 // Rust note for C# readers: `type` creates an alias; `Box<...>` is a heap-owned pointer,
 // `dyn FnMut()` is a trait object (roughly an interface callback), and `+ Send` adds a trait bound.
@@ -72,6 +86,19 @@ impl PACTInstance {
     pub fn request_fresh_scan(&mut self) {
         // Runtime refresh only; does not persist config on its own.
         self.pact_process_overwatch.request_fresh_scan();
+    }
+
+    pub fn launch_minimized(&self) -> bool {
+        self.pact_process_overwatch
+            .user_config_lock()
+            .launch_minimized
+    }
+
+    pub fn set_launch_minimized(&mut self, enabled: bool) {
+        self.pact_process_overwatch
+            .user_config_lock_mut()
+            .launch_minimized = enabled;
+        self.persist_and_notify();
     }
 
     // Config persistence boundaries.
@@ -298,17 +325,87 @@ impl PACTInstance {
         self.persist_and_notify();
     }
 
-    /// Returns sorted explicit assignments as `(process_name, group_name)`.
-    pub fn get_assigned_processes(&self) -> Vec<(String, String)> {
+    /// Returns sorted effective assignments for UI display.
+    ///
+    /// Includes:
+    /// - explicit persisted assignments
+    /// - ephemeral default-group assignments for unassigned running processes
+    /// - ephemeral auto-mode assignments for detected running processes
+    pub fn get_assigned_processes(&self) -> Vec<AssignedProcess> {
         let cfg = self.pact_process_overwatch.user_config_lock();
-        // Clone map entries into an owned vector for UI-friendly sorting/use.
-        // Rust note for C# readers: `|(p, g)| ...` is a closure; `|...|` are its parameters.
-        let mut v: Vec<(String, String)> = cfg
-            .process_assignments
+        let mut by_name: std::collections::HashMap<String, AssignedProcess> =
+            std::collections::HashMap::new();
+
+        for (proc_name, group_lower) in cfg.process_assignments.iter() {
+            let group_name = cfg
+                .group_by_name(group_lower)
+                .map(|g| g.name.clone())
+                .unwrap_or_else(|| group_lower.clone());
+
+            by_name.insert(
+                proc_name.to_lowercase(),
+                AssignedProcess {
+                    name: proc_name.clone(),
+                    group: group_name,
+                    source: AssignedProcessSource::Explicit,
+                },
+            );
+        }
+
+        let running = self.pact_process_overwatch.running_processes();
+        let auto_mode_enabled = self.pact_process_overwatch.is_auto_mode();
+        let detections = self.pact_process_overwatch.auto_mode_detections_list();
+        let mut detected_set = std::collections::HashSet::new();
+        for name in detections {
+            detected_set.insert(name.to_lowercase());
+        }
+
+        let custom_set: std::collections::HashSet<String> = cfg
+            .custom_processes
             .iter()
-            .map(|(p, g)| (p.clone(), g.clone()))
+            .map(|cp| cp.name.to_lowercase())
             .collect();
-        v.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let default_group = cfg.default_group().map(|g| g.name.clone());
+        let auto_group = if auto_mode_enabled {
+            cfg.auto_mode_group().map(|g| g.name.clone())
+        } else {
+            None
+        };
+
+        for process_name in running {
+            let key = process_name.to_lowercase();
+
+            if by_name.contains_key(&key) || custom_set.contains(&key) {
+                continue;
+            }
+
+            if let Some(group_name) = auto_group.as_ref().filter(|_| detected_set.contains(&key)) {
+                by_name.insert(
+                    key,
+                    AssignedProcess {
+                        name: process_name,
+                        group: group_name.clone(),
+                        source: AssignedProcessSource::AutoMode,
+                    },
+                );
+                continue;
+            }
+
+            if let Some(group_name) = &default_group {
+                by_name.insert(
+                    key,
+                    AssignedProcess {
+                        name: process_name,
+                        group: group_name.clone(),
+                        source: AssignedProcessSource::Default,
+                    },
+                );
+            }
+        }
+
+        let mut v: Vec<AssignedProcess> = by_name.into_values().collect();
+        v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         v
     }
 
@@ -404,6 +501,10 @@ impl PACTInstance {
 
     pub fn get_auto_mode_detections(&self) -> Vec<String> {
         self.pact_process_overwatch.auto_mode_detections_list()
+    }
+
+    pub fn get_auto_mode_detection_pairs(&self) -> Vec<(String, String)> {
+        self.pact_process_overwatch.auto_mode_detection_pairs_list()
     }
 
     pub fn add_to_auto_mode_launchers(&mut self, name: &str) {

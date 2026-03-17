@@ -69,3 +69,28 @@ pub fn priority_to_index(p: &ProcessPriority) -> usize {
         ProcessPriority::RealTime => 5,
     }
 }
+
+#[cfg(target_os = "linux")]
+pub fn priority_to_niceness(p: &ProcessPriority) -> i32 {
+    match p {
+        ProcessPriority::Idle => 19,
+        ProcessPriority::BelowNormal => 10,
+        ProcessPriority::Normal => 0,
+        ProcessPriority::AboveNormal => -5,
+        ProcessPriority::High => -10,
+        ProcessPriority::RealTime => -20,
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub fn niceness_to_priority_index(nice: i32) -> Option<usize> {
+    match nice {
+        19 => Some(0),
+        10 => Some(1),
+        0 => Some(2),
+        -5 => Some(3),
+        -10 => Some(4),
+        -20 => Some(5),
+        _ => None,
+    }
+}

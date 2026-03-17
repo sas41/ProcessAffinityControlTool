@@ -3,11 +3,13 @@
 use iced::font;
 
 use iced::widget::{
-    button, column, container, row, scrollable, slider, text, Column, Container, Space,
+    button, checkbox, column, container, row, scrollable, slider, text, Column, Container, Space,
 };
 
 use iced::{Alignment, Background, Color, Font, Length};
 
+#[cfg(target_os = "linux")]
+use crate::gui::priority::priority_to_niceness;
 use crate::gui::priority::{priority_to_index, PRIORITY_LABELS};
 use crate::gui::topology_diagram::group_color;
 use crate::gui::{AppCache, Message as AppMessage};
@@ -23,6 +25,9 @@ pub enum Message {
 
     /// Button pressed: open the project GitHub page.
     OpenGitHub,
+
+    /// Toggle whether app should start hidden to tray.
+    SetLaunchMinimized(bool),
 }
 
 /// Builds the full Options tab view from top to bottom sections.
@@ -67,6 +72,9 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
         ]
         .spacing(8)
         .align_y(Alignment::Center),
+        checkbox(cache.launch_minimized)
+            .label("Launch minimized")
+            .on_toggle(|v| AppMessage::OptionsMessage(Message::SetLaunchMinimized(v))),
     ]
     .spacing(8);
 
@@ -110,6 +118,14 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
                 ..Default::default()
             })
             .width(Length::Fixed(80.0)),
+        #[cfg(target_os = "linux")]
+        text("Nice")
+            .size(13)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Default::default()
+            })
+            .width(Length::Fixed(60.0)),
         text("Flags")
             .size(13)
             .font(Font {
@@ -129,9 +145,11 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
         std::collections::HashMap::new();
 
     // `_` ignores an unused tuple item; `&` borrows instead of moving.
-    for (_, grp) in &cache.assigned {
+    for assigned in &cache.assigned {
         // `entry(...).or_default()` inserts missing key with `usize::default()` (0).
-        *proc_counts.entry(grp.to_lowercase()).or_default() += 1;
+        *proc_counts
+            .entry(assigned.group.to_lowercase())
+            .or_default() += 1;
     }
 
     let group_rows = cache
@@ -148,6 +166,17 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
             let priority_str = match &g.priority {
                 Some(p) => PRIORITY_LABELS[priority_to_index(p)].to_string(),
                 None => "ignore".to_string(),
+            };
+
+            #[cfg(target_os = "linux")]
+            let niceness_str = match g.niceness {
+                Some(v) => v.to_string(),
+                None => g
+                    .priority
+                    .as_ref()
+                    .map(priority_to_niceness)
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
             };
 
             let flags_str = if g.is_default {
@@ -181,6 +210,12 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
                         .font(italic)
                         .color(Color::from_rgb(0.65, 0.65, 0.65))
                         .width(Length::Fixed(80.0)),
+                    #[cfg(target_os = "linux")]
+                    text(niceness_str)
+                        .size(13)
+                        .font(italic)
+                        .color(Color::from_rgb(0.65, 0.65, 0.65))
+                        .width(Length::Fixed(60.0)),
                     text(flags_str)
                         .size(13)
                         .color(Color::from_rgb(0.65, 0.65, 0.65))

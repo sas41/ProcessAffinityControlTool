@@ -3,7 +3,7 @@ use iced::widget::tooltip::Position as TooltipPosition;
 use iced::widget::{
     button, column, container, progress_bar, row, scrollable, text, tooltip, Column, Row, Space,
 };
-use iced::{Alignment, Color, Element, Length};
+use iced::{Alignment, Background, Color, Element, Length};
 
 use crate::core::topology::TopologyView;
 use crate::gui::topology_diagram::{
@@ -109,22 +109,9 @@ pub fn view<'a>(
     ]
     .align_y(Alignment::Center);
 
-    // "Assigned" means a currently running process name that appears in
-    // either a group assignment or a custom process entry.
-    let assigned_count = {
-        let managed_names: std::collections::HashSet<&str> = cache
-            .assigned
-            .iter()
-            .map(|(n, _)| n.as_str())
-            .chain(cache.custom_processes.iter().map(|cp| cp.name.as_str()))
-            .collect();
-
-        cache
-            .running
-            .iter()
-            .filter(|n| managed_names.contains(n.as_str()))
-            .count()
-    };
+    // "Assigned" in the status badges means successfully managed process count
+    // (i.e., changes actually applied), not just configured/effective matches.
+    let assigned_count = cache.managed_count;
 
     // Top counters summarize what the scanner sees right now:
     // - Total: all visible running process names.
@@ -148,7 +135,29 @@ pub fn view<'a>(
                 snap: false,
             });
 
-        tooltip(btn, "Click to see a list", TooltipPosition::Top)
+        tooltip(
+            btn,
+            container(
+                text("Click to see a list")
+                    .size(12)
+                    .color(Color::from_rgb(0.88, 0.88, 0.88))
+                    .width(Length::Shrink),
+            )
+            .width(Length::Shrink),
+            TooltipPosition::Top,
+        )
+        .gap(10)
+        .padding(10)
+        .snap_within_viewport(true)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.11, 0.11, 0.11))),
+            border: iced::Border {
+                color: Color::from_rgb(0.40, 0.40, 0.40),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        })
     };
 
     let stats_row = row![

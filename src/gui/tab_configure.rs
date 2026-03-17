@@ -12,10 +12,11 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Border, Color, Font, Length, Padding};
 
+use crate::core::pact_instance::AssignedProcessSource;
 use crate::core::process_config::ProcessGroup;
 use crate::gui::draggable_pill::DraggablePill;
 use crate::gui::drop_zone::DropZone;
-use crate::gui::widgets::{icon_button_content, process_pill};
+use crate::gui::widgets::process_pill_badged_alert;
 use crate::gui::{AppCache, Message as AppMessage};
 
 /// Maximum number of group cards in each grid row.
@@ -71,6 +72,41 @@ fn group_flag_row(g: &ProcessGroup) -> Row<'static, AppMessage> {
     }
 
     flags
+}
+
+fn small_icon_button_content(glyph: iced::widget::Text<'static>) -> Container<'static, AppMessage> {
+    container(glyph.size(13.0))
+        .width(20)
+        .height(20)
+        .center_x(20)
+        .center_y(20)
+}
+
+fn source_badges(source: AssignedProcessSource) -> Vec<(iced::widget::Text<'static>, Color)> {
+    match source {
+        AssignedProcessSource::Explicit => Vec::new(),
+        AssignedProcessSource::Default => vec![(
+            iced_fonts::bootstrap::award_fill(),
+            Color::from_rgb(0.43, 0.73, 1.0),
+        )],
+        AssignedProcessSource::AutoMode => vec![(
+            iced_fonts::bootstrap::lightning_charge_fill(),
+            Color::from_rgb(0.99, 0.85, 0.24),
+        )],
+    }
+}
+
+fn add_mixed_warning_badge(
+    mut badges: Vec<(iced::widget::Text<'static>, Color)>,
+    show: bool,
+) -> Vec<(iced::widget::Text<'static>, Color)> {
+    if show {
+        badges.push((
+            iced_fonts::bootstrap::exclamation_triangle_fill(),
+            Color::from_rgb(0.95, 0.84, 0.20),
+        ));
+    }
+    badges
 }
 
 /// User intents emitted by controls inside the Configure tab.
@@ -131,31 +167,76 @@ pub fn view<'a>(
     // `&T` is a shared borrow (roughly a read-only reference).
     dragging: Option<&'a str>,
     process_filter: &'a str,
+    search_pulse_phase: f32,
 ) -> Container<'a, AppMessage> {
     // Normalize once for case-insensitive matching.
     let running_set: std::collections::HashSet<String> =
         // `::` is Rust's path separator (similar to C# namespace/type qualification).
         cache.running.iter().map(|s| s.to_lowercase()).collect();
+    let mut running_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for name in &cache.running {
+        *running_counts.entry(name.to_lowercase()).or_default() += 1;
+    }
+
+    let mut inaccessible_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for name in &cache.protected_names {
+        *inaccessible_counts.entry(name.to_lowercase()).or_default() += 1;
+    }
+
+    let name_variants = |name: &str| -> Vec<bool> {
+        let key = name.to_lowercase();
+        let total = running_counts.get(&key).copied().unwrap_or(0);
+        let inaccessible = inaccessible_counts.get(&key).copied().unwrap_or(0);
+
+        if total == 0 {
+            return vec![false];
+        }
+
+        let mut out = Vec::new();
+        if total > inaccessible {
+            out.push(false);
+        }
+        if inaccessible > 0 {
+            out.push(true);
+        }
+        if out.is_empty() {
+            out.push(false);
+        }
+        out
+    };
 
     let assigned_names: std::collections::HashSet<String> = cache
         .assigned
         .iter()
-        .map(|(n, _)| n.clone())
+        .map(|a| a.name.clone())
         .chain(cache.custom_processes.iter().map(|cp| cp.name.clone()))
         .collect();
 
-    let mut by_group: std::collections::HashMap<String, Vec<String>> =
+    let mut by_group: std::collections::HashMap<String, Vec<(String, AssignedProcessSource)>> =
         std::collections::HashMap::new();
 
-    for (proc, grp) in &cache.assigned {
+    for assigned in &cache.assigned {
         by_group
-            .entry(grp.to_lowercase())
+            .entry(assigned.group.to_lowercase())
             .or_default()
-            .push(proc.clone());
+            .push((assigned.name.clone(), assigned.source));
     }
 
     let dropping = dragging.map(|s| s.to_string());
     let has_groups = !cache.groups.is_empty();
+    let filter_lower = process_filter.to_lowercase();
+    let pulse = if process_filter.is_empty() {
+        0.0
+    } else {
+        (search_pulse_phase.sin() * 0.5) + 0.5
+    };
+    let search_bg = Color::from_rgb(
+        0.14 + (0.10 * pulse),
+        0.18 + (0.10 * pulse),
+        0.24 + (0.12 * pulse),
+    );
 
     let action_bar = row![
         // `row![...]` is a macro call (`!`) that expands into widget-building code.
@@ -172,6 +253,17 @@ pub fn view<'a>(
                 btn
             }
         },
+        text_input("Search processes...", process_filter)
+            .on_input(|s| AppMessage::ConfigureMessage(Message::UpdateProcessFilter(s)))
+            .width(Length::Fixed(220.0))
+            .size(13)
+            .style(move |theme, status| {
+                let mut style = iced::widget::text_input::default(theme, status);
+                if !process_filter.is_empty() {
+                    style.background = Background::Color(search_bg);
+                }
+                style
+            }),
         Space::new().width(Length::Fill),
         button(text("Help").size(13))
             .on_press(AppMessage::ShowGroupsHelp)
@@ -187,7 +279,18 @@ pub fn view<'a>(
             let gname = g.name.clone();
             let gname_lower = gname.to_lowercase();
 
-            let procs: Vec<String> = by_group.get(&gname_lower).cloned().unwrap_or_default();
+            let all_group_procs: Vec<(String, AssignedProcessSource)> =
+                by_group.get(&gname_lower).cloned().unwrap_or_default();
+            let group_name_match = !filter_lower.is_empty() && gname_lower.contains(&filter_lower);
+            let procs: Vec<(String, AssignedProcessSource)> = all_group_procs
+                .iter()
+                .filter(|(p, _)| {
+                    filter_lower.is_empty()
+                        || group_name_match
+                        || p.to_lowercase().contains(&filter_lower)
+                })
+                .cloned()
+                .collect();
 
             let header = row![
                 row![
@@ -200,11 +303,13 @@ pub fn view<'a>(
                 .spacing(6)
                 .align_y(Alignment::Center),
                 Space::new().width(Length::Fill),
-                button(icon_button_content(iced_fonts::bootstrap::three_dots()))
-                    .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(
-                        Some(gname.clone(),)
-                    )))
-                    .padding(0),
+                button(small_icon_button_content(
+                    iced_fonts::bootstrap::three_dots(),
+                ))
+                .on_press(AppMessage::ConfigureMessage(Message::OpenGroupEditor(
+                    Some(gname.clone(),)
+                )))
+                .padding(0),
             ]
             .align_y(Alignment::Center)
             .spacing(4)
@@ -215,14 +320,29 @@ pub fn view<'a>(
                     right: 14.0,
                     ..Default::default()
                 }),
-                |col, pname| {
+                |col, (pname, source)| {
                     let is_running = running_set.contains(&pname.to_lowercase());
-                    let drag_msg =
-                        AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
-                    col.push(DraggablePill::new(
-                        process_pill(pname, is_running),
-                        drag_msg,
-                    ))
+                    let variants = name_variants(&pname);
+                    let mixed = variants.len() > 1;
+                    let mut out = col;
+                    for is_inaccessible in variants {
+                        let drag_msg =
+                            AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
+                        let base_badges = if source == AssignedProcessSource::Explicit {
+                            Vec::new()
+                        } else {
+                            source_badges(source)
+                        };
+                        let badges = add_mixed_warning_badge(base_badges, mixed);
+                        let pill = process_pill_badged_alert(
+                            pname.clone(),
+                            is_running,
+                            badges,
+                            is_inaccessible,
+                        );
+                        out = out.push(DraggablePill::new(pill, drag_msg));
+                    }
+                    out
                 },
             );
 
@@ -277,29 +397,22 @@ pub fn view<'a>(
         grid = grid.push(current_row.width(Length::Fill));
     }
 
-    let filter_lower = process_filter.to_lowercase();
-
+    let mut seen_unassigned = std::collections::HashSet::new();
     let unassigned: Vec<String> = cache
         .running
         .iter()
         .filter(|n| !assigned_names.contains(*n))
         .filter(|n| filter_lower.is_empty() || n.to_lowercase().contains(&filter_lower))
+        .filter(|n| seen_unassigned.insert(n.to_lowercase()))
         .cloned()
         .collect();
 
     let running_card = container(
         column![
-            row![
-                text("Running Processes").size(15).font(Font {
-                    weight: font::Weight::Bold,
-                    ..Default::default()
-                }),
-                Space::new().width(Length::Fill),
-                text_input("Filter…", process_filter)
-                    .on_input(|s| AppMessage::ConfigureMessage(Message::UpdateProcessFilter(s)))
-                    .width(Length::Fixed(160.0))
-                    .size(13),
-            ]
+            row![text("Running Processes").size(15).font(Font {
+                weight: font::Weight::Bold,
+                ..Default::default()
+            }),]
             .align_y(Alignment::Center)
             .spacing(8),
             container(Space::new().height(1.0))
@@ -314,8 +427,22 @@ pub fn view<'a>(
                     ..Default::default()
                 }),
                 |col, pname| {
-                    let msg = AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
-                    col.push(DraggablePill::new(process_pill(pname, true), msg))
+                    let variants = name_variants(&pname);
+                    let mixed = variants.len() > 1;
+                    let mut out = col;
+                    for is_inaccessible in variants {
+                        let msg = AppMessage::ConfigureMessage(Message::DragStarted(pname.clone()));
+                        out = out.push(DraggablePill::new(
+                            process_pill_badged_alert(
+                                pname.clone(),
+                                true,
+                                add_mixed_warning_badge(Vec::new(), mixed),
+                                is_inaccessible,
+                            ),
+                            msg,
+                        ));
+                    }
+                    out
                 }
             ))
             .width(Length::Fill)
@@ -334,7 +461,7 @@ pub fn view<'a>(
             ..Default::default()
         }),
         Space::new().width(Length::Fill),
-        button(icon_button_content(iced_fonts::bootstrap::plus()))
+        button(small_icon_button_content(iced_fonts::bootstrap::plus()))
             .on_press(AppMessage::ConfigureMessage(
                 Message::OpenCustomProcessEditor(None),
             ))
@@ -346,23 +473,41 @@ pub fn view<'a>(
     let custom_list = cache
         .custom_processes
         .iter()
+        .filter(|cp| filter_lower.is_empty() || cp.name.to_lowercase().contains(&filter_lower))
         .fold(Column::new().spacing(3), |col, cp| {
             let name = cp.name.clone();
-            let drag_msg = AppMessage::ConfigureMessage(Message::DragStarted(name.clone()));
+            let is_running = running_set.contains(&name.to_lowercase());
             let edit_msg =
                 AppMessage::ConfigureMessage(Message::OpenCustomProcessEditor(Some(name.clone())));
 
-            col.push(
-                row![
-                    DraggablePill::new(process_pill(name, false), drag_msg),
-                    Space::new().width(Length::Fill),
-                    button(icon_button_content(iced_fonts::bootstrap::three_dots()))
-                        .on_press(edit_msg)
+            let variants = name_variants(&name);
+            let mixed = variants.len() > 1;
+            let mut out = col;
+            for is_inaccessible in variants {
+                let drag_msg = AppMessage::ConfigureMessage(Message::DragStarted(name.clone()));
+                out = out.push(
+                    row![
+                        DraggablePill::new(
+                            process_pill_badged_alert(
+                                name.clone(),
+                                is_running,
+                                add_mixed_warning_badge(Vec::new(), mixed),
+                                is_inaccessible,
+                            ),
+                            drag_msg,
+                        ),
+                        Space::new().width(Length::Fill),
+                        button(small_icon_button_content(
+                            iced_fonts::bootstrap::three_dots(),
+                        ))
+                        .on_press(edit_msg.clone())
                         .padding(0),
-                ]
-                .align_y(Alignment::Center)
-                .spacing(4),
-            )
+                    ]
+                    .align_y(Alignment::Center)
+                    .spacing(4),
+                );
+            }
+            out
         });
 
     let custom_card = container(

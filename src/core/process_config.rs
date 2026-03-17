@@ -175,6 +175,10 @@ pub struct ProcessGroup {
     /// Priority class to apply, or `None` to leave unchanged.
     pub priority: Option<ProcessPriority>,
 
+    /// Linux niceness override (`-20..19`), or `None` to leave unchanged.
+    #[serde(rename = "Niceness", default)]
+    pub niceness: Option<i32>,
+
     /// Fallback group for unassigned processes. At most one group should use this.
     pub is_default: bool,
 
@@ -226,6 +230,8 @@ pub struct CustomProcess {
     pub name: String,
     pub affinity: Option<AffinityConfig>,
     pub priority: Option<ProcessPriority>,
+    #[serde(rename = "Niceness", default)]
+    pub niceness: Option<i32>,
 }
 
 impl CustomProcess {
@@ -234,6 +240,7 @@ impl CustomProcess {
             name: name.into(),
             affinity: None,
             priority: None,
+            niceness: None,
         }
     }
 }
@@ -244,6 +251,7 @@ impl ProcessGroup {
             name: name.into(),
             affinity: None,
             priority: None,
+            niceness: None,
             is_default: false,
             is_blacklist: false,
             is_auto_mode_group: false,
@@ -282,6 +290,7 @@ mod tests {
         assert_eq!(g.name, "Test");
         assert!(g.affinity.is_none());
         assert!(g.priority.is_none());
+        assert!(g.niceness.is_none());
         assert!(!g.is_default);
         assert!(!g.is_blacklist);
         assert!(!g.is_auto_mode_group);

@@ -17,6 +17,7 @@ use std::path::PathBuf;
 
 use core::elevation::is_elevated;
 use core::topology::TopologyView;
+use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -24,10 +25,9 @@ use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
-use gui::AppCache;
 use iced::widget::tooltip;
 use iced::widget::tooltip::Position as TooltipPosition;
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
 
@@ -93,10 +93,10 @@ fn create_tray(rgba: &[u8], width: u32, height: u32) -> Option<TrayState> {
         .with_tooltip("PACT")
         .with_title("PACT");
 
-    #[cfg(target_os = "linux")]
-    {
-        builder = builder.with_temp_dir_path("/tmp");
-    }
+    // #[cfg(target_os = "linux")]
+    // {
+    //     builder = builder.with_temp_dir_path("/tmp");
+    // }
 
     let tray = builder.build().ok()?;
     Some(TrayState {
@@ -154,6 +154,9 @@ pub struct ProcessAffinityApp {
     /// Process-list filter text.
     pub process_filter: String,
 
+    /// Animation phase for Configure search pulse.
+    pub search_pulse_phase: f32,
+
     /// RGBA icon bytes and dimensions.
     pub icon_rgba: (Vec<u8>, u32, u32),
 
@@ -193,6 +196,7 @@ impl Default for ProcessAffinityApp {
             dragging_process: None,
             groups_help_open: false,
             process_filter: String::new(),
+            search_pulse_phase: 0.0,
             icon_rgba,
             tray_state,
             window_ids: Vec::new(),
@@ -213,10 +217,12 @@ fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
         custom_processes: pact.get_custom_processes(),
         protected_count: pact.pact_process_overwatch.protected_process_count(),
         protected_names: pact.get_protected_processes(),
+        managed_count: pact.pact_process_overwatch.managed_process_count(),
         cpu_stats: pact.pact_process_overwatch.cpu_stats(),
         launchers: pact.get_auto_mode_launchers(),
-        detections: pact.get_auto_mode_detections(),
+        detections: pact.get_auto_mode_detection_pairs(),
         scan_interval: pact.pact_process_overwatch.scan_interval(),
+        launch_minimized: pact.launch_minimized(),
     }
 }
 
@@ -238,6 +244,8 @@ fn subscription(_app: &ProcessAffinityApp) -> Subscription<gui::Message> {
     let window_closed = iced::window::close_events().map(gui::Message::WindowClosed);
     let tray_poll =
         iced::time::every(Duration::from_millis(250)).map(|_| gui::Message::PollTrayEvents);
+    let search_pulse =
+        iced::time::every(Duration::from_millis(33)).map(|_| gui::Message::SearchPulse);
     Subscription::batch([
         tick,
         mouse_release,
@@ -245,6 +253,7 @@ fn subscription(_app: &ProcessAffinityApp) -> Subscription<gui::Message> {
         window_opened,
         window_closed,
         tray_poll,
+        search_pulse,
     ])
 }
 
@@ -295,9 +304,9 @@ fn open_or_focus_main_window(app: &mut ProcessAffinityApp) -> Task<gui::Message>
 
 #[cfg(target_os = "windows")]
 fn enforce_single_instance() -> bool {
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
     use windows::Win32::System::Threading::CreateMutexW;
+    use windows::core::PCWSTR;
 
     let name: Vec<u16> = "Global\\ProcessAffinityControlTool.Singleton"
         .encode_utf16()
@@ -330,8 +339,6 @@ fn lock_file_path() -> Option<PathBuf> {
 fn enforce_single_instance() -> bool {
     use std::fs::OpenOptions;
 
-    use nix::fcntl::{flock, FlockArg};
-
     let Some(path) = lock_file_path() else {
         return true;
     };
@@ -348,8 +355,10 @@ fn enforce_single_instance() -> bool {
     };
 
     let fd = file.as_raw_fd();
-    if flock(fd, FlockArg::LockExclusiveNonblock).is_err() {
-        return false;
+    unsafe {
+        if libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) != 0 {
+            return false;
+        }
     }
 
     std::mem::forget(file);
@@ -408,6 +417,10 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
     match message {
         gui::Message::Tick => {
             app.cache = build_cache(&app.pact);
+        }
+
+        gui::Message::SearchPulse => {
+            app.search_pulse_phase = (app.search_pulse_phase + 0.14) % std::f32::consts::TAU;
         }
 
         gui::Message::TabSelected(tab) => {
@@ -584,6 +597,10 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 gui::tab_options::Message::OpenGitHub => {
                     let _ =
                         open::that("https://github.com/sas41/ProcessAffinityControlTool#readme");
+                }
+
+                gui::tab_options::Message::SetLaunchMinimized(enabled) => {
+                    app.pact.set_launch_minimized(enabled);
                 }
             }
             app.is_elevated = is_elevated();
@@ -772,20 +789,86 @@ fn view_groups_help() -> Element<'static, gui::Message> {
         .spacing(4)
     }
 
-    let content = column![
-        text("How Groups Work").size(18).font(iced::Font {
+    let icon_legend = column![
+        text("Icons").size(14).font(iced::Font {
             weight: iced::font::Weight::Bold,
             ..Default::default()
         }),
-        Space::new().height(4),
-        text("Groups let you apply CPU affinity and/or priority settings to a set of processes. Assign processes to a group and they will be managed automatically on each scan.").size(13).color(Color::from_rgb(0.75, 0.75, 0.75)),
-        Space::new().height(8),
+        row![
+            iced_fonts::bootstrap::award_fill()
+                .size(13)
+                .color(Color::from_rgb(0.43, 0.73, 1.0)),
+            text("Default group or default-assigned process")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        row![
+            iced_fonts::bootstrap::ban_fill()
+                .size(13)
+                .color(Color::from_rgb(1.0, 0.44, 0.44)),
+            text("Blacklist group")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        row![
+            iced_fonts::bootstrap::lightning_charge_fill()
+                .size(13)
+                .color(Color::from_rgb(0.99, 0.85, 0.24)),
+            text("Auto Mode group or auto-assigned process")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        row![
+            iced_fonts::bootstrap::cpu_fill()
+                .size(13)
+                .color(Color::from_rgb(0.55, 0.94, 0.72)),
+            text("Group has custom process affinity (cores/threads)")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        row![
+            iced_fonts::bootstrap::stars()
+                .size(13)
+                .color(Color::from_rgb(0.92, 0.68, 1.0)),
+            text("Group has custom process priority")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        row![
+            iced_fonts::bootstrap::exclamation_triangle_fill()
+                .size(13)
+                .color(Color::from_rgb(0.95, 0.84, 0.20)),
+            text("Process has both accessible and inaccessible instances")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(4);
+
+    let content = column![
+        section("Groups", "Groups allow for controlled assignment of cores and priority for a given set of processes."),
+        section("Search", "The top search box filters all three areas at once: Groups, Running Processes, and Custom Processes. Configure lists are deduplicated by name and accessibility."),
+        section("Drag & Drop", "Drag any process from Running Processes onto a group card to assign it, or onto the Custom Processes area to configure it individually.\nDragging any pill to the Running Processes area will remove it from its group."),
+        section("Process Colors", "Bright gray pills are currently running.\nDim gray pills are currently not running.\nRed-background pills are inaccessible (permission-limited), so affinity/priority changes could not be applied.\nA name appears twice only when both accessible and inaccessible instances are present."),
+        icon_legend,
         section("Affinity", "Restricts which CPU cores a group's processes may run on. Useful for isolating workloads to P-cores, E-cores, or a specific CCD."),
-        section("Priority", "Sets the OS scheduling priority for processes in the group. Higher priority means more CPU time relative to other processes."),
-        section("Default Group", "Processes not explicitly assigned to any group automatically land here. Only one group can be the default at a time."),
-        section("Blacklist", "Processes assigned to a blacklist group are skipped entirely — no affinity or priority changes are applied."),
+        section("Priority / Niceness", "Priority buttons are scheduling presets. On Linux, niceness is also supported directly in editors. If a process is inaccessible, priority/niceness changes may be skipped."),
+        section("Default Group", "Processes not explicitly assigned to any group automatically land here. Only one group can be the default at a time. These assignments are ephemeral and are not written into config."),
+        section("Auto Mode", "Processes detected under registered launcher trees are routed to the Auto Mode group (if configured). These assignments are also ephemeral."),
+        section("Blacklist", "Processes assigned to a blacklist group are skipped entirely — no affinity, priority, or niceness changes are applied."),
         section("Custom Processes", "Individual processes with their own affinity and priority, independent of any group."),
-        section("Drag & Drop", "Drag any pill from Running Processes onto a group card to assign it, or onto the Custom Processes area to configure it individually.\nDragging any pill to the Running Processes area will remove it from its group."),
         Space::new().height(8),
         button(text("Close").size(13))
             .on_press(gui::Message::HideGroupsHelp)
@@ -833,17 +916,22 @@ fn view_inaccessible_processes_modal(names: Vec<String>) -> Element<'static, gui
         text("Processes that could not be modified due to permission limits.")
             .size(13)
             .color(Color::from_rgb(0.75, 0.75, 0.75)),
-        container(scrollable(text(list_text).size(12)).height(Length::Fixed(260.0)))
-            .padding(10)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgb(0.10, 0.10, 0.10))),
-                border: Border {
-                    color: Color::from_rgb(0.30, 0.30, 0.30),
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            }),
+        container(
+            scrollable(text(list_text).size(12).width(Length::Fill),)
+                .width(Length::Fill)
+                .height(Length::Fixed(260.0)),
+        )
+        .width(Length::Fill)
+        .padding(10)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.10, 0.10, 0.10))),
+            border: Border {
+                color: Color::from_rgb(0.30, 0.30, 0.30),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        }),
         row![button(text("Close").size(13)).on_press(gui::Message::CloseInaccessibleList),]
             .spacing(10)
             .align_y(Alignment::Center),
@@ -967,6 +1055,7 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             &app.cache,
             app.dragging_process.as_deref(),
             &app.process_filter,
+            app.search_pulse_phase,
         )
         .into(),
         gui::TabId::AutoMode => tab_auto_mode::view(&app.cache, &app.new_launcher_name).into(),
@@ -1066,18 +1155,20 @@ fn main() -> iced::Result {
 
     /// Create initial state and open the main window.
     fn boot() -> (ProcessAffinityApp, Task<gui::Message>) {
-        let (rgba, w, h) = load_icon_rgba();
-        let icon = iced::window::icon::from_rgba(rgba, w, h).ok();
-
-        let (_, open_task) = iced::window::open(main_window_settings(icon));
-
         let mut app = ProcessAffinityApp::default();
         app.topology_group_repeat = parse_topology_group_repeat_arg();
-        app.window_open_pending = true;
         app.cache = build_cache(&app.pact);
         app.is_elevated = is_elevated();
 
-        (app, open_task.map(gui::Message::WindowOpened))
+        if app.cache.launch_minimized {
+            (app, Task::none())
+        } else {
+            let (rgba, w, h) = load_icon_rgba();
+            let icon = iced::window::icon::from_rgba(rgba, w, h).ok();
+            let (_, open_task) = iced::window::open(main_window_settings(icon));
+            app.window_open_pending = true;
+            (app, open_task.map(gui::Message::WindowOpened))
+        }
     }
 
     iced::daemon(boot, update, daemon_view)

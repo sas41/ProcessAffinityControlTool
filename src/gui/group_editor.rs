@@ -24,6 +24,7 @@ impl ProcessGroupExt for ProcessGroup {
             name: String::new(),
             affinity: None,
             priority: None,
+            niceness: None,
             is_default: false,
             is_blacklist: false,
             is_auto_mode_group: false,
@@ -54,6 +55,8 @@ pub struct GroupEditor {
 
     pub priority_enabled: bool,
     pub priority_index: usize,
+    #[cfg(target_os = "linux")]
+    pub niceness_text: String,
 
     pub result: Option<ProcessGroup>,
 
@@ -73,6 +76,8 @@ pub enum Message {
     ToggleAffinity,
     TogglePriority,
     PriorityChanged(usize),
+    #[cfg(target_os = "linux")]
+    NicenessChanged(String),
     CoreToggled(usize, bool),
     SelectAllCores,
     SelectNoneCores,
@@ -145,7 +150,27 @@ impl GroupEditor {
             affinity_enabled,
             core_checks,
             priority_enabled,
-            priority_index: g.priority.as_ref().map_or(2, priority_to_index),
+            priority_index: {
+                #[cfg(target_os = "linux")]
+                {
+                    g.niceness
+                        .and_then(crate::gui::priority::niceness_to_priority_index)
+                        .or_else(|| g.priority.as_ref().map(priority_to_index))
+                        .unwrap_or(usize::MAX)
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    g.priority.as_ref().map_or(2, priority_to_index)
+                }
+            },
+            #[cfg(target_os = "linux")]
+            niceness_text: {
+                use crate::gui::priority::priority_to_niceness;
+                let v = g
+                    .niceness
+                    .or_else(|| g.priority.as_ref().map(priority_to_niceness));
+                v.map_or_else(String::new, |n| n.to_string())
+            },
             result: None,
             delete_requested: false,
             confirm_delete: false,
@@ -183,7 +208,28 @@ impl GroupEditor {
             }
             Message::ToggleAffinity => self.affinity_enabled = !self.affinity_enabled,
             Message::TogglePriority => self.priority_enabled = !self.priority_enabled,
-            Message::PriorityChanged(index) => self.priority_index = index,
+            Message::PriorityChanged(index) => {
+                self.priority_index = index;
+                #[cfg(target_os = "linux")]
+                {
+                    use crate::gui::priority::priority_to_niceness;
+                    self.niceness_text =
+                        priority_to_niceness(&index_to_priority(index)).to_string();
+                }
+            }
+            #[cfg(target_os = "linux")]
+            Message::NicenessChanged(s) => {
+                self.niceness_text = s.clone();
+                if let Ok(v) = s.trim().parse::<i32>() {
+                    if let Some(idx) = crate::gui::priority::niceness_to_priority_index(v) {
+                        self.priority_index = idx;
+                    } else {
+                        self.priority_index = usize::MAX;
+                    }
+                } else {
+                    self.priority_index = usize::MAX;
+                }
+            }
             Message::CoreToggled(index, checked) => {
                 if index < self.core_checks.len() {
                     self.core_checks[index] = checked;
@@ -243,7 +289,29 @@ impl GroupEditor {
                     None
                 };
                 let priority = if self.priority_enabled && !self.is_blacklist {
-                    Some(index_to_priority(self.priority_index))
+                    #[cfg(target_os = "linux")]
+                    {
+                        self.niceness_text
+                            .trim()
+                            .parse::<i32>()
+                            .ok()
+                            .and_then(crate::gui::priority::niceness_to_priority_index)
+                            .map(index_to_priority)
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        Some(index_to_priority(self.priority_index))
+                    }
+                } else {
+                    None
+                };
+                #[cfg(target_os = "linux")]
+                let niceness = if self.priority_enabled && !self.is_blacklist {
+                    self.niceness_text
+                        .trim()
+                        .parse::<i32>()
+                        .ok()
+                        .map(|v| v.clamp(-20, 19))
                 } else {
                     None
                 };
@@ -251,6 +319,10 @@ impl GroupEditor {
                     name: self.name.trim().to_string(),
                     affinity,
                     priority,
+                    #[cfg(target_os = "linux")]
+                    niceness,
+                    #[cfg(not(target_os = "linux"))]
+                    niceness: None,
                     is_default: self.is_default,
                     is_blacklist: self.is_blacklist,
                     is_auto_mode_group: self.is_auto_mode_group,
@@ -398,6 +470,37 @@ impl GroupEditor {
                 ]
                 .spacing(5);
                 content = content.push(priority_grid);
+
+                #[cfg(target_os = "linux")]
+                {
+                    content = content.push(
+                        row![
+                            text("Niceness:"),
+                            text_input("-20..19", &self.niceness_text)
+                                .on_input(|s| {
+                                    AppMessage::GroupEditorMessage(Message::NicenessChanged(s))
+                                })
+                                .width(Length::Fixed(90.0))
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center),
+                    );
+
+                    let niceness_negative = self
+                        .niceness_text
+                        .trim()
+                        .parse::<i32>()
+                        .ok()
+                        .is_some_and(|v| v < 0);
+
+                    if niceness_negative {
+                        content = content.push(
+                            text("Warning: negative niceness values may require elevated permissions and can fail for protected processes.")
+                                .size(12)
+                                .color(Color::from_rgb(0.96, 0.82, 0.25)),
+                        );
+                    }
+                }
             }
             content
         };
