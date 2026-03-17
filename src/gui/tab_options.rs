@@ -96,7 +96,7 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
         ..Default::default()
     };
 
-    let header_row = row![
+    let mut header_row = row![
         text("Name")
             .size(13)
             .font(Font {
@@ -118,27 +118,36 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
                 ..Default::default()
             })
             .width(Length::Fixed(80.0)),
-        #[cfg(target_os = "linux")]
-        text("Nice")
-            .size(13)
-            .font(Font {
-                weight: font::Weight::Bold,
-                ..Default::default()
-            })
-            .width(Length::Fixed(60.0)),
-        text("Flags")
-            .size(13)
-            .font(Font {
-                weight: font::Weight::Bold,
-                ..Default::default()
-            })
-            .width(Length::Fixed(80.0)),
-        text("Processes").size(13).font(Font {
-            weight: font::Weight::Bold,
-            ..Default::default()
-        }),
     ]
     .spacing(0);
+
+    #[cfg(target_os = "linux")]
+    {
+        header_row = header_row.push(
+            text("Nice")
+                .size(13)
+                .font(Font {
+                    weight: font::Weight::Bold,
+                    ..Default::default()
+                })
+                .width(Length::Fixed(60.0)),
+        );
+    }
+
+    header_row = header_row
+        .push(
+            text("Flags")
+                .size(13)
+                .font(Font {
+                    weight: font::Weight::Bold,
+                    ..Default::default()
+                })
+                .width(Length::Fixed(80.0)),
+        )
+        .push(text("Processes").size(13).font(Font {
+            weight: font::Weight::Bold,
+            ..Default::default()
+        }));
 
     // Pre-count assigned processes per group for the table.
     let mut proc_counts: std::collections::HashMap<String, usize> =
@@ -194,38 +203,49 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
 
             let gc = group_color(gi);
 
-            col.push(
-                row![
-                    text(g.name.clone())
-                        .size(13)
-                        .color(gc)
-                        .width(Length::Fixed(130.0)),
-                    text(affinity_str)
-                        .size(13)
-                        .font(italic)
-                        .color(Color::from_rgb(0.65, 0.65, 0.65))
-                        .width(Length::Fixed(80.0)),
-                    text(priority_str)
-                        .size(13)
-                        .font(italic)
-                        .color(Color::from_rgb(0.65, 0.65, 0.65))
-                        .width(Length::Fixed(80.0)),
-                    #[cfg(target_os = "linux")]
+            let mut group_row = row![
+                text(g.name.clone())
+                    .size(13)
+                    .color(gc)
+                    .width(Length::Fixed(130.0)),
+                text(affinity_str)
+                    .size(13)
+                    .font(italic)
+                    .color(Color::from_rgb(0.65, 0.65, 0.65))
+                    .width(Length::Fixed(80.0)),
+                text(priority_str)
+                    .size(13)
+                    .font(italic)
+                    .color(Color::from_rgb(0.65, 0.65, 0.65))
+                    .width(Length::Fixed(80.0)),
+            ]
+            .spacing(0);
+
+            #[cfg(target_os = "linux")]
+            {
+                group_row = group_row.push(
                     text(niceness_str)
                         .size(13)
                         .font(italic)
                         .color(Color::from_rgb(0.65, 0.65, 0.65))
                         .width(Length::Fixed(60.0)),
+                );
+            }
+
+            group_row = group_row
+                .push(
                     text(flags_str)
                         .size(13)
                         .color(Color::from_rgb(0.65, 0.65, 0.65))
                         .width(Length::Fixed(80.0)),
+                )
+                .push(
                     text(proc_count.to_string())
                         .size(13)
                         .color(Color::from_rgb(0.65, 0.65, 0.65)),
-                ]
-                .spacing(0),
-            )
+                );
+
+            col.push(group_row)
         });
 
     let groups_section = column![
