@@ -74,6 +74,10 @@ jobs:
             libxdo-dev \
             pkg-config
 
+      - name: Install macOS system dependencies
+        if: matrix.os == 'macos-latest'
+        run: brew install autoconf automake libtool
+
       - name: Build
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
