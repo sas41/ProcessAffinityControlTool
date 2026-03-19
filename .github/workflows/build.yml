@@ -7,8 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version string
+        id: version
+        run: |
+          HASH=$(git rev-parse --short=7 HEAD)
+          VERSION=$(date -u +'%Y-%m-%d-%H%M')-${HASH}
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build (${{ matrix.os }})
+    needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -30,14 +47,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Compute version string
-        id: version
-        shell: bash
-        run: |
-          HASH=$(git rev-parse --short=7 HEAD)
-          VERSION=$(date -u +'%Y-%m-%d-%H%M')-${HASH}
-          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -67,8 +76,12 @@ jobs:
 
       - name: Build
         env:
-          APP_VERSION: ${{ steps.version.outputs.value }}
-        run: cargo build --release --target ${{ matrix.target }}
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: cargo build --release --target ${{ matrix.target }} --config profile.release.debug=false
+
+      - name: Strip binary
+        if: matrix.os != 'windows-latest'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.binary }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -76,3 +89,26 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: target/${{ matrix.target }}/release/${{ matrix.binary }}
           if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.version }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+          files: |
+            artifacts/pact-linux/process_affinity_control_tool
+            artifacts/pact-windows/process_affinity_control_tool.exe
+            artifacts/pact-macos/process_affinity_control_tool
