@@ -9,7 +9,8 @@ use std::sync::Mutex;
 pub enum AssignedProcessSource {
     Explicit,
     Default,
-    AutoMode,
+    /// Process is managed because its ancestor was configured with capture_sub_processes.
+    ChildInherited,
 }
 
 #[derive(Debug, Clone)]
@@ -73,12 +74,6 @@ impl PACTInstance {
 
     pub fn toggle_process_overwatch(&mut self) -> bool {
         let s = self.pact_process_overwatch.toggle_process_overwatch();
-        self.fire_config_updated();
-        s
-    }
-
-    pub fn toggle_auto_mode(&mut self) -> bool {
-        let s = self.pact_process_overwatch.toggle_auto_mode();
         self.fire_config_updated();
         s
     }
@@ -330,7 +325,6 @@ impl PACTInstance {
     /// Includes:
     /// - explicit persisted assignments
     /// - ephemeral default-group assignments for unassigned running processes
-    /// - ephemeral auto-mode assignments for detected running processes
     pub fn get_assigned_processes(&self) -> Vec<AssignedProcess> {
         let cfg = self.pact_process_overwatch.user_config_lock();
         let mut by_name: std::collections::HashMap<String, AssignedProcess> =
@@ -352,43 +346,51 @@ impl PACTInstance {
             );
         }
 
-        let running = self.pact_process_overwatch.running_processes();
-        let auto_mode_enabled = self.pact_process_overwatch.is_auto_mode();
-        let detections = self.pact_process_overwatch.auto_mode_detections_list();
-        let mut detected_set = std::collections::HashSet::new();
-        for name in detections {
-            detected_set.insert(name.to_lowercase());
-        }
-
         let custom_set: std::collections::HashSet<String> = cfg
             .custom_processes
             .iter()
             .map(|cp| cp.name.to_lowercase())
             .collect();
 
+        // Priority 2: Capture Sub-Processes children.
+        // Must be inserted BEFORE the default-group loop so that a child process
+        // captured into e.g. "Gaming" is not first claimed by the default group,
+        // which would cause it to appear in the wrong group card.
+        let child_data = self.pact_process_overwatch.capture_sub_processes_data();
+        for (child_name, _parent_lc, group_lc) in child_data {
+            let key = child_name.to_lowercase();
+            if by_name.contains_key(&key) || custom_set.contains(&key) {
+                continue; // explicit assignment or custom process rule takes priority
+            }
+            // group_lc is empty for children whose seed is a custom process (no group).
+            // We still register them with an empty group so they appear in assigned_names
+            // and are excluded from the Running Processes panel.  They are rendered
+            // in the Custom Processes tree view, not in any group card.
+            let group_name = if group_lc.is_empty() {
+                String::new()
+            } else {
+                cfg.group_by_name(&group_lc)
+                    .map(|g| g.name.clone())
+                    .unwrap_or(group_lc)
+            };
+            by_name.insert(
+                key,
+                AssignedProcess {
+                    name: child_name,
+                    group: group_name,
+                    source: AssignedProcessSource::ChildInherited,
+                },
+            );
+        }
+
+        // Priority 3 (lowest): Default group for all other running processes.
+        let running = self.pact_process_overwatch.running_processes();
         let default_group = cfg.default_group().map(|g| g.name.clone());
-        let auto_group = if auto_mode_enabled {
-            cfg.auto_mode_group().map(|g| g.name.clone())
-        } else {
-            None
-        };
 
         for process_name in running {
             let key = process_name.to_lowercase();
 
             if by_name.contains_key(&key) || custom_set.contains(&key) {
-                continue;
-            }
-
-            if let Some(group_name) = auto_group.as_ref().filter(|_| detected_set.contains(&key)) {
-                by_name.insert(
-                    key,
-                    AssignedProcess {
-                        name: process_name,
-                        group: group_name.clone(),
-                        source: AssignedProcessSource::AutoMode,
-                    },
-                );
                 continue;
             }
 
@@ -483,42 +485,6 @@ impl PACTInstance {
             .into_iter()
             .filter(|n| cfg.process_assignments.get(n).is_none())
             .collect()
-    }
-
-    // Auto mode config.
-
-    pub fn get_auto_mode_launchers(&self) -> Vec<String> {
-        let mut v: Vec<String> = self
-            .pact_process_overwatch
-            .user_config_lock()
-            .auto_mode_launchers
-            .iter()
-            .cloned()
-            .collect();
-        v.sort();
-        v
-    }
-
-    pub fn get_auto_mode_detections(&self) -> Vec<String> {
-        self.pact_process_overwatch.auto_mode_detections_list()
-    }
-
-    pub fn get_auto_mode_detection_pairs(&self) -> Vec<(String, String)> {
-        self.pact_process_overwatch.auto_mode_detection_pairs_list()
-    }
-
-    pub fn add_to_auto_mode_launchers(&mut self, name: &str) {
-        self.pact_process_overwatch
-            .user_config_lock_mut()
-            .add_to_auto_mode_launchers(name.to_string());
-        self.persist_and_notify();
-    }
-
-    pub fn remove_from_auto_mode_launchers(&mut self, name: &str) {
-        self.pact_process_overwatch
-            .user_config_lock_mut()
-            .remove_from_auto_mode_launchers(name);
-        self.persist_and_notify();
     }
 }
 

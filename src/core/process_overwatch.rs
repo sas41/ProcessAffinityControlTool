@@ -22,7 +22,7 @@
 //! - `#[cfg(...)]`: conditional compilation (similar role to `#if` target checks).
 //! - `move || { ... }`: closure that captures and owns values (used for thread entry).
 
-use crate::core::pact_config::{CaseInsensitiveHashSet, PACTConfig};
+use crate::core::pact_config::PACTConfig;
 use crate::core::process_config::ProcessPriority;
 
 use std::collections::HashMap;
@@ -86,17 +86,11 @@ struct ProcessOverwatchInner {
     /// PIDs that failed modification.
     pub protected_processes: Mutex<HashSet<u32>>,
 
-    /// Whether auto-mode detection is enabled.
-    pub auto_mode: Mutex<bool>,
-
-    /// Auto-mode detections.
-    pub auto_mode_detections: Mutex<CaseInsensitiveHashSet>,
-
-    /// Session detections as (launcher, detected process) pairs.
-    pub auto_mode_detection_pairs: Mutex<Vec<(String, String)>>,
-
-    /// Child PID to parent name cache for auto-mode checks.
-    pub child_parent_pairs: Mutex<HashMap<u32, String>>,
+    /// Processes currently managed via capture_sub_processes propagation.
+    /// Each triple: (child_name_original_case, direct_parent_name_lower, group_name_lower).
+    /// Empty string for group_name means a custom-process rule (no group).
+    /// Replaced wholesale after every scan pass.
+    pub capture_sub_processes_data: Mutex<Vec<(String, String, String)>>,
 
     /// One-shot full rescan request, consumed by worker loop.
     pub fresh_scan_requested: Mutex<bool>,
@@ -135,10 +129,7 @@ impl ProcessOverwatch {
                 paused_config: Mutex::new(paused_config),
                 managed_processes: Mutex::new(HashSet::new()),
                 protected_processes: Mutex::new(HashSet::new()),
-                auto_mode: Mutex::new(true),
-                auto_mode_detections: Mutex::new(CaseInsensitiveHashSet::new()),
-                auto_mode_detection_pairs: Mutex::new(Vec::new()),
-                child_parent_pairs: Mutex::new(HashMap::new()),
+                capture_sub_processes_data: Mutex::new(Vec::new()),
                 fresh_scan_requested: Mutex::new(false),
                 scanner_active: Mutex::new(true),
                 cpu_stats: Mutex::new(CpuStats::default()),
@@ -152,11 +143,6 @@ impl ProcessOverwatch {
     /// Returns whether the scanner thread is active.
     pub fn is_scanner_active(&self) -> bool {
         *self.inner.scanner_active.lock().unwrap()
-    }
-
-    /// Returns whether auto mode is enabled.
-    pub fn is_auto_mode(&self) -> bool {
-        *self.inner.auto_mode.lock().unwrap()
     }
 
     /// Returns the number of managed processes.
@@ -194,32 +180,6 @@ impl ProcessOverwatch {
         self.inner.protected_process_names.lock().unwrap().clone()
     }
 
-    /// Returns sorted auto-mode detections.
-    pub fn auto_mode_detections_list(&self) -> Vec<String> {
-        let mut v: Vec<String> = self
-            .inner
-            .auto_mode_detections
-            .lock()
-            .unwrap()
-            .iter()
-            .cloned()
-            .collect();
-
-        v.sort();
-        v
-    }
-
-    /// Returns sorted auto-mode detections as (launcher, process) pairs.
-    pub fn auto_mode_detection_pairs_list(&self) -> Vec<(String, String)> {
-        let mut v = self.inner.auto_mode_detection_pairs.lock().unwrap().clone();
-        v.sort_by(|a, b| {
-            let al = a.0.to_lowercase();
-            let bl = b.0.to_lowercase();
-            al.cmp(&bl).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
-        });
-        v
-    }
-
     /// Locks and returns the user config.
     pub fn user_config_lock(&self) -> std::sync::MutexGuard<'_, PACTConfig> {
         self.inner.user_config.lock().unwrap()
@@ -228,6 +188,16 @@ impl ProcessOverwatch {
     /// Locks and returns the user config for mutation.
     pub fn user_config_lock_mut(&self) -> std::sync::MutexGuard<'_, PACTConfig> {
         self.inner.user_config.lock().unwrap()
+    }
+
+    /// Returns a snapshot of processes managed via capture_sub_processes propagation.
+    /// Each triple: (child_name, direct_parent_name_lower, group_name_lower).
+    pub fn capture_sub_processes_data(&self) -> Vec<(String, String, String)> {
+        self.inner
+            .capture_sub_processes_data
+            .lock()
+            .unwrap()
+            .clone()
     }
 
     /// Atomically reads and clears the one-shot fresh-scan request.
@@ -253,29 +223,16 @@ impl ProcessOverwatch {
         *active
     }
 
-    /// Toggles auto mode and returns the new state.
-    pub fn toggle_auto_mode(&self) -> bool {
-        let has_auto_mode_group = self
-            .inner
-            .user_config
-            .lock()
-            .unwrap()
-            .auto_mode_group()
-            .is_some();
-
-        if !has_auto_mode_group {
-            *self.inner.auto_mode.lock().unwrap() = false;
-            return false;
-        }
-
-        let mut m = self.inner.auto_mode.lock().unwrap();
-        *m = !*m;
-        *m
-    }
-
     /// Requests a full rescan on the next scan cycle.
+    /// Also clears stale capture data immediately so the UI doesn't show an
+    /// outdated tree between the config change and the next scan completing.
     pub fn request_fresh_scan(&self) {
         *self.inner.fresh_scan_requested.lock().unwrap() = true;
+        self.inner
+            .capture_sub_processes_data
+            .lock()
+            .unwrap()
+            .clear();
     }
 
     /// Refreshes and returns CPU usage and frequency stats.
@@ -297,117 +254,6 @@ impl ProcessOverwatch {
         }
     }
 
-    /// Rebuilds parent cache and auto-mode detections from live process data.
-    pub fn update_child_parent_pairs(&self, system: &System) {
-        let mut pairs: HashMap<u32, String> = HashMap::new();
-        let mut detections = CaseInsensitiveHashSet::new();
-        let mut detection_pairs: Vec<(String, String)> = Vec::new();
-
-        let launchers: std::collections::HashSet<String> = self
-            .inner
-            .user_config
-            .lock()
-            .unwrap()
-            .auto_mode_launchers
-            .iter()
-            .cloned()
-            .collect();
-
-        let mut process_names: HashMap<u32, String> = HashMap::new();
-        let mut parents: HashMap<u32, u32> = HashMap::new();
-
-        for (pid, process) in system.processes() {
-            let process_name = process.name().to_string_lossy().into_owned();
-            let name_lc = process_name.to_lowercase();
-
-            if name_lc == "idle" || name_lc == "system" {
-                continue;
-            }
-
-            let pid_u32 = pid.as_u32();
-            process_names.insert(pid_u32, process_name.clone());
-
-            if launchers.contains(&name_lc) {
-                detections.insert(process_name.clone());
-            }
-
-            {
-                let cached = self.inner.child_parent_pairs.lock().unwrap();
-                if let Some(parent) = cached.get(&pid_u32) {
-                    pairs.insert(pid_u32, parent.clone());
-                }
-            }
-
-            if let Some(ppid) = process.parent() {
-                parents.insert(pid_u32, ppid.as_u32());
-                if let Some(parent_proc) = system.process(ppid) {
-                    let parent_name = parent_proc.name().to_string_lossy().into_owned();
-                    pairs.insert(pid_u32, parent_name.clone());
-                }
-            }
-        }
-
-        let mut launcher_by_pid: HashMap<u32, Option<String>> = HashMap::new();
-
-        fn launcher_for_pid(
-            pid: u32,
-            parents: &HashMap<u32, u32>,
-            process_names: &HashMap<u32, String>,
-            launchers: &std::collections::HashSet<String>,
-            memo: &mut HashMap<u32, Option<String>>,
-        ) -> Option<String> {
-            if let Some(v) = memo.get(&pid) {
-                return v.clone();
-            }
-
-            let Some(name) = process_names.get(&pid) else {
-                memo.insert(pid, None);
-                return None;
-            };
-
-            if launchers.contains(&name.to_lowercase()) {
-                let launcher = Some(name.clone());
-                memo.insert(pid, launcher.clone());
-                return launcher;
-            }
-
-            let Some(parent) = parents.get(&pid).copied() else {
-                memo.insert(pid, None);
-                return None;
-            };
-
-            let result = launcher_for_pid(parent, parents, process_names, launchers, memo);
-            memo.insert(pid, result);
-            memo.get(&pid).cloned().unwrap_or(None)
-        }
-
-        let mut seen_pairs: std::collections::HashSet<(String, String)> =
-            std::collections::HashSet::new();
-
-        for pid in process_names.keys().copied() {
-            if let Some(launcher_name) = launcher_for_pid(
-                pid,
-                &parents,
-                &process_names,
-                &launchers,
-                &mut launcher_by_pid,
-            )
-                && let Some(name) = process_names.get(&pid)
-            {
-                detections.insert(name.clone());
-
-                let key = (launcher_name.to_lowercase(), name.to_lowercase());
-                if seen_pairs.insert(key) {
-                    detection_pairs.push((launcher_name, name.clone()));
-                }
-            }
-        }
-
-        *self.inner.child_parent_pairs.lock().unwrap() = pairs;
-        *self.inner.auto_mode_detections.lock().unwrap() = detections;
-        *self.inner.auto_mode_detection_pairs.lock().unwrap() = detection_pairs;
-    }
-
     /// Main scan pass: resolve policy per process, snapshot once, then apply.
     pub fn scan_and_manage(&self, system: &System, forced: bool) {
         if forced {
@@ -427,6 +273,81 @@ impl ProcessOverwatch {
 
         all_names.sort_unstable();
 
+        // Build PID → parent PID and PID → lowercase name maps for child propagation.
+        // These are used below to walk ancestry when a process has no direct match but
+        // an ancestor has capture_sub_processes enabled.
+        let mut pid_to_parent: HashMap<u32, u32> = HashMap::new();
+        let mut pid_to_name_lc: HashMap<u32, String> = HashMap::new();
+        for (pid, proc) in system.processes() {
+            let pid_u32 = pid.as_u32();
+            pid_to_name_lc.insert(pid_u32, proc.name().to_string_lossy().to_lowercase());
+            if let Some(ppid) = proc.parent() {
+                pid_to_parent.insert(pid_u32, ppid.as_u32());
+            }
+        }
+
+        // Pre-build a map of lowercase process name → inherited policy for all
+        // custom processes and explicitly assigned group processes that have
+        // capture_sub_processes = true and at least one effective setting.
+        // Tuple: (affinity_mask, priority, niceness, group_name_lower).
+        // group_name_lower is empty for custom-process seeds (no group).
+        type InheritedPolicy = (u64, Option<ProcessPriority>, Option<i32>, String);
+        let child_policies: HashMap<String, InheritedPolicy> = {
+            let cfg = self.inner.user_config.lock().unwrap();
+            let mut map: HashMap<String, InheritedPolicy> = HashMap::new();
+
+            // Custom processes take precedence (mirror normal resolution order).
+            for cp in &cfg.custom_processes {
+                if !cp.capture_sub_processes {
+                    continue;
+                }
+                let mask = cp.affinity.as_ref().map_or(0, |a| a.affinity_mask);
+                #[cfg(target_os = "linux")]
+                let niceness = cp
+                    .niceness
+                    .or_else(|| cp.priority.as_ref().map(Self::priority_to_niceness));
+                #[cfg(not(target_os = "linux"))]
+                let niceness: Option<i32> = None;
+                // Always seed child_policies even when no settings are applied.
+                // Children are still captured and shown in the tree; the scanner's
+                // emergent-blacklist check later decides whether to modify them.
+                map.insert(
+                    cp.name.to_lowercase(),
+                    (mask, cp.priority.clone(), niceness, String::new()),
+                );
+            }
+
+            // Explicit group assignments.
+            for (proc_name, group_name) in cfg.process_assignments.iter() {
+                if map.contains_key(proc_name) {
+                    continue; // custom process entry already present
+                }
+                if let Some(g) = cfg.group_by_name(group_name) {
+                    if !g.capture_sub_processes {
+                        continue;
+                    }
+                    let mask = g.affinity.as_ref().map_or(0, |a| a.affinity_mask);
+                    #[cfg(target_os = "linux")]
+                    let niceness = g
+                        .niceness
+                        .or_else(|| g.priority.as_ref().map(Self::priority_to_niceness));
+                    #[cfg(not(target_os = "linux"))]
+                    let niceness: Option<i32> = None;
+                    // Always seed child_policies even when no settings are applied.
+                    // Children are still captured and visible in the tree.
+                    map.insert(
+                        proc_name.clone(),
+                        (mask, g.priority.clone(), niceness, group_name.clone()),
+                    );
+                }
+            }
+
+            map
+        };
+
+        // Accumulates (child_name, direct_parent_lc, group_lc) triples this scan pass.
+        let mut new_capture_sub_processes: Vec<(String, String, String)> = Vec::new();
+
         for (pid, process) in system.processes() {
             let pid_u32 = pid.as_u32();
 
@@ -440,10 +361,17 @@ impl ProcessOverwatch {
 
             let process_name = process.name().to_string_lossy().into_owned();
 
-            let (affinity_mask, priority, niceness, is_blacklist) = {
+            // Resolution hierarchy (highest to lowest priority):
+            // 1. Custom process rule
+            // 2. Explicit group assignment
+            // 3. Capture sub-processes (ancestor walk)
+            // 4. Default group
+            // A group/custom-process with no affinity and no priority is an
+            // emergent blacklist — the process is tracked but not modified.
+            let (affinity_mask, priority, niceness) = {
                 let cfg = self.inner.user_config.lock().unwrap();
 
-                // Custom per-process rule overrides group-based assignment.
+                // Priority 1: Custom per-process rule.
                 if let Some(cp) = cfg.custom_process(&process_name) {
                     let mask = cp.affinity.as_ref().map_or(0, |a| a.affinity_mask);
                     #[cfg(target_os = "linux")]
@@ -452,25 +380,12 @@ impl ProcessOverwatch {
                         .or_else(|| cp.priority.as_ref().map(Self::priority_to_niceness));
                     #[cfg(not(target_os = "linux"))]
                     let niceness = None;
-                    (mask, cp.priority.clone(), niceness, false)
-                } else {
-                    let auto_mode = *self.inner.auto_mode.lock().unwrap();
-                    let auto_detections = self.inner.auto_mode_detections.lock().unwrap();
-
-                    // Auto mode only applies when process has no explicit assignment.
-                    let is_auto_detected = auto_mode
-                        && auto_detections.contains(&process_name)
-                        && cfg.process_assignments.get(&process_name).is_none();
-
-                    let group = if is_auto_detected {
-                        cfg.auto_mode_group()
-                    } else {
-                        cfg.group_for_process(&process_name)
-                    };
-
-                    match group {
-                        None => continue,
-                        Some(g) if g.is_blacklist => (0u64, None, None, true),
+                    (mask, cp.priority.clone(), niceness)
+                }
+                // Priority 2: Explicit group assignment (no default fallback).
+                else if let Some(group_name) = cfg.explicit_group_of(&process_name) {
+                    match cfg.group_by_name(group_name) {
+                        None => continue, // orphaned assignment
                         Some(g) => {
                             let mask = g.affinity.as_ref().map(|a| a.affinity_mask);
                             #[cfg(target_os = "linux")]
@@ -479,18 +394,64 @@ impl ProcessOverwatch {
                                 .or_else(|| g.priority.as_ref().map(Self::priority_to_niceness));
                             #[cfg(not(target_os = "linux"))]
                             let niceness = None;
-                            (mask.unwrap_or(0), g.priority.clone(), niceness, false)
+                            (mask.unwrap_or(0), g.priority.clone(), niceness)
+                        }
+                    }
+                } else {
+                    // Priority 3: Capture sub-processes — walk ancestry chain.
+                    // The while loop handles arbitrary nesting depth.
+                    let direct_parent_lc = pid_to_parent
+                        .get(&pid_u32)
+                        .and_then(|ppid| pid_to_name_lc.get(ppid))
+                        .cloned()
+                        .unwrap_or_default();
+
+                    let mut ancestor = pid_to_parent.get(&pid_u32).copied();
+                    let mut inherited: Option<InheritedPolicy> = None;
+                    while let Some(ppid) = ancestor {
+                        if let Some(parent_name) = pid_to_name_lc.get(&ppid) {
+                            if let Some(policy) = child_policies.get(parent_name) {
+                                inherited = Some(policy.clone());
+                                break;
+                            }
+                        }
+                        ancestor = pid_to_parent.get(&ppid).copied();
+                    }
+
+                    if let Some((mask, pri, nic, group_lc)) = inherited {
+                        new_capture_sub_processes.push((
+                            process_name.clone(),
+                            direct_parent_lc,
+                            group_lc,
+                        ));
+                        (mask, pri, nic)
+                    } else {
+                        // Priority 4: Default group (lowest).
+                        match cfg.default_group() {
+                            None => continue,
+                            Some(g) => {
+                                let mask = g.affinity.as_ref().map(|a| a.affinity_mask);
+                                #[cfg(target_os = "linux")]
+                                let niceness = g.niceness.or_else(|| {
+                                    g.priority.as_ref().map(Self::priority_to_niceness)
+                                });
+                                #[cfg(not(target_os = "linux"))]
+                                let niceness = None;
+                                (mask.unwrap_or(0), g.priority.clone(), niceness)
+                            }
                         }
                     }
                 }
             };
 
-            if is_blacklist {
-                continue;
-            }
-
             let want_affinity = affinity_mask != 0;
             let want_priority = priority.is_some() || niceness.is_some();
+
+            // Emergent blacklist: group/rule applies no settings — track but skip.
+            if !want_affinity && !want_priority {
+                current_set.insert(pid_u32);
+                continue;
+            }
 
             if want_affinity || want_priority {
                 // Snapshot original state once so we can restore on shutdown.
@@ -532,6 +493,39 @@ impl ProcessOverwatch {
         *self.inner.managed_processes.lock().unwrap() = current_set;
         *self.inner.running_processes.lock().unwrap() = all_names;
         *self.inner.protected_process_names.lock().unwrap() = protected_names;
+
+        // On a forced scan every process was re-resolved from scratch, so
+        // new_capture_sub_processes is the complete and authoritative picture.
+        // Replace entirely to avoid stale entries (e.g. a child process whose
+        // parent moved to a different capture group).
+        //
+        // On incremental scans, managed_processes was not cleared, so child
+        // processes that were already managed were skipped before they could be
+        // re-recorded.  In that case we keep existing entries for processes that
+        // are still running and only append freshly discovered children.
+        if forced {
+            *self.inner.capture_sub_processes_data.lock().unwrap() = new_capture_sub_processes;
+        } else {
+            let running_lc: HashSet<String> = self
+                .inner
+                .running_processes
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|n| n.to_lowercase())
+                .collect();
+            let mut acd = self.inner.capture_sub_processes_data.lock().unwrap();
+            // Drop entries for processes that are no longer running.
+            acd.retain(|(child, _, _)| running_lc.contains(&child.to_lowercase()));
+            // Append newly discovered children, skipping duplicates.
+            let existing_lc: HashSet<String> =
+                acd.iter().map(|(c, _, _)| c.to_lowercase()).collect();
+            for entry in new_capture_sub_processes {
+                if !existing_lc.contains(&entry.0.to_lowercase()) {
+                    acd.push(entry);
+                }
+            }
+        }
     }
 
     /// Restores all snapshotted processes to pre-modification values.
@@ -857,7 +851,8 @@ impl ProcessOverwatch {
             ok &= sched_setaffinity(nix_pid, &cpu_set).is_ok();
         }
 
-        let resolved_niceness = niceness.or_else(|| priority.as_ref().map(Self::priority_to_niceness));
+        let resolved_niceness =
+            niceness.or_else(|| priority.as_ref().map(Self::priority_to_niceness));
         if let Some(nice) = resolved_niceness {
             unsafe {
                 ok &= libc::setpriority(libc::PRIO_PROCESS, pid, nice.clamp(-20, 19)) == 0;
@@ -956,10 +951,6 @@ impl ScanHandler {
                 *overwatch.inner.cpu_stats.lock().unwrap() = stats;
 
                 if overwatch.is_scanner_active() {
-                    if overwatch.is_auto_mode() {
-                        overwatch.update_child_parent_pairs(&proc_sys);
-                    }
-
                     let fresh = overwatch.take_fresh_scan();
                     overwatch.scan_and_manage(&proc_sys, fresh);
                 }

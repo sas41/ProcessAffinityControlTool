@@ -16,8 +16,6 @@ use crate::gui::{AppCache, Message as AppMessage};
 #[derive(Debug, Clone)]
 pub enum Message {
     ToggleScanner,
-    ToggleAutoMode,
-    RequestFreshScan,
     OpenInaccessibleList,
 }
 
@@ -32,15 +30,11 @@ pub fn view<'a>(
     // Button colors encode runtime state at a glance.
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
     const RED: Color = Color::from_rgb(0.72, 0.18, 0.18);
-    const GREY: Color = Color::from_rgb(0.22, 0.22, 0.28);
 
-    // `if` is an expression in Rust, so it directly returns a value for `let`.
     let scanner_col = if cache.is_scanner_active { GREEN } else { RED };
-    let auto_col = if cache.is_auto_mode { GREEN } else { GREY };
 
     let scanner_btn = button(
         container(
-            // `row![...]` is a macro (`!`) that expands into widget-building code.
             row![
                 text(if cache.is_scanner_active {
                     "Pause"
@@ -60,55 +54,11 @@ pub fn view<'a>(
         .width(Length::Fill)
         .center_x(Length::Fill),
     )
-    // `Enum::Variant(...)` is namespaced variant construction (like C# `Type.Member`).
     .on_press(AppMessage::StatusMessage(Message::ToggleScanner))
     .width(Length::Fixed(120.0))
     .style(colored_button_style(scanner_col));
 
-    let auto_btn = button(
-        container(
-            row![
-                text("Auto Mode").size(13),
-                icon(if cache.is_auto_mode {
-                    iced_fonts::bootstrap::toggle_on()
-                } else {
-                    iced_fonts::bootstrap::toggle_off()
-                }),
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center),
-        )
-        .width(Length::Fill)
-        .center_x(Length::Fill),
-    )
-    .on_press(AppMessage::StatusMessage(Message::ToggleAutoMode))
-    .width(Length::Fixed(120.0))
-    .style(colored_button_style(auto_col));
-
-    let scan_btn = button(
-        container(
-            row![
-                text("Fresh Scan").size(13),
-                icon(iced_fonts::bootstrap::arrow_clockwise()),
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center),
-        )
-        .width(Length::Fill)
-        .center_x(Length::Fill),
-    )
-    .on_press(AppMessage::StatusMessage(Message::RequestFreshScan))
-    .width(Length::Fixed(120.0))
-    .style(colored_button_style(GREY));
-
-    let top_bar = row![
-        scanner_btn,
-        Space::new().width(8.0),
-        auto_btn,
-        Space::new().width(8.0),
-        scan_btn
-    ]
-    .align_y(Alignment::Center);
+    let top_bar = row![scanner_btn].align_y(Alignment::Center);
 
     // "Assigned" in the status badges means successfully managed process count
     // (i.e., changes actually applied), not just configured/effective matches.
@@ -254,11 +204,9 @@ pub fn view<'a>(
     ));
 
     // Legend mirrors group colors used in the topology cards.
-    // Prefixes: [BL] blacklist group, [D] default fallback group.
+    // Prefixes: [D] default fallback group.
     for (gi, g) in cache.groups.iter().enumerate() {
-        let lbl = if g.is_blacklist {
-            format!("[BL] {}", g.name)
-        } else if g.is_default {
+        let lbl = if g.is_default {
             format!("[D] {}", g.name)
         } else {
             g.name.clone()

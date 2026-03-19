@@ -2,6 +2,7 @@
 use crate::core::pact_instance::AssignedProcess;
 use crate::core::process_config::{CustomProcess, ProcessGroup};
 use crate::core::process_overwatch::CpuStats;
+use std::collections::HashMap;
 
 /// Shared UI state snapshot used by all tabs.
 /// Refreshed by `Message::Tick` so views can read cached values without
@@ -11,7 +12,6 @@ use crate::core::process_overwatch::CpuStats;
 // `pub` = public visibility; `struct` groups named fields (like a C# class/record data shape).
 pub struct AppCache {
     pub is_scanner_active: bool,
-    pub is_auto_mode: bool,
     pub is_elevated: bool,
     // `Vec<T>` is Rust's growable array/list (roughly `List<T>` in C#).
     pub groups: Vec<ProcessGroup>,
@@ -24,10 +24,12 @@ pub struct AppCache {
     pub protected_names: Vec<String>,
     pub managed_count: usize,
     pub cpu_stats: CpuStats,
-    pub launchers: Vec<String>,
-    pub detections: Vec<(String, String)>,
     pub scan_interval: u64,
     pub launch_minimized: bool,
+    /// Maps child process name (lowercase) → direct parent process name (lowercase)
+    /// for all processes currently managed via capture_sub_processes propagation.
+    /// Used by the Configure tab to render tree views in group cards and custom process panel.
+    pub child_process_parents: HashMap<String, String>,
 }
 
 // `mod` declares child modules loaded from other files.
@@ -37,8 +39,6 @@ pub mod drop_zone;
 pub mod group_editor;
 pub mod priority;
 pub mod process_editor;
-/// Auto Mode tab: manage scanner/assignment automation behavior.
-pub mod tab_auto_mode;
 /// Configure tab: edit groups, rules, and process mappings.
 pub mod tab_configure;
 /// Options tab: app-level preferences, import/export, and utilities.
@@ -58,8 +58,6 @@ pub enum TabId {
     Status,
     /// Manual configuration of groups and process behavior.
     Configure,
-    /// Automation controls for background scanning/assignment.
-    AutoMode,
     /// General app settings and maintenance actions.
     Options,
 }
@@ -71,7 +69,6 @@ pub enum Message {
     // Tab messages.
     StatusMessage(tab_status::Message),
     ConfigureMessage(tab_configure::Message),
-    AutoModeMessage(tab_auto_mode::Message),
     OptionsMessage(tab_options::Message),
 
     OpenInaccessibleList,
@@ -89,6 +86,7 @@ pub enum Message {
 
     ShowGroupsHelp,
     HideGroupsHelp,
+    ToggleShowChildren,
 
     /// OS close button was pressed; we decide whether to hide or quit.
     CloseRequested(iced::window::Id),

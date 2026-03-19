@@ -182,12 +182,10 @@ pub struct ProcessGroup {
     /// Fallback group for unassigned processes. At most one group should use this.
     pub is_default: bool,
 
-    /// Skip all changes for processes in this group.
-    pub is_blacklist: bool,
-
-    /// Target group for auto-mode launcher detections.
+    /// When true, child processes of any explicitly assigned process in this
+    /// group also receive the group's affinity and priority settings.
     #[serde(default)]
-    pub is_auto_mode_group: bool,
+    pub capture_sub_processes: bool,
 }
 
 /// CPU affinity as editable core list plus precomputed bitmask.
@@ -232,6 +230,11 @@ pub struct CustomProcess {
     pub priority: Option<ProcessPriority>,
     #[serde(rename = "Niceness", default)]
     pub niceness: Option<i32>,
+
+    /// When true, child processes of this process also receive these
+    /// affinity and priority settings.
+    #[serde(default)]
+    pub capture_sub_processes: bool,
 }
 
 impl CustomProcess {
@@ -241,6 +244,7 @@ impl CustomProcess {
             affinity: None,
             priority: None,
             niceness: None,
+            capture_sub_processes: false,
         }
     }
 }
@@ -253,8 +257,7 @@ impl ProcessGroup {
             priority: None,
             niceness: None,
             is_default: false,
-            is_blacklist: false,
-            is_auto_mode_group: false,
+            capture_sub_processes: false,
         }
     }
 }
@@ -292,7 +295,5 @@ mod tests {
         assert!(g.priority.is_none());
         assert!(g.niceness.is_none());
         assert!(!g.is_default);
-        assert!(!g.is_blacklist);
-        assert!(!g.is_auto_mode_group);
     }
 }

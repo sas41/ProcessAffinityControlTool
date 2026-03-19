@@ -73,14 +73,16 @@ impl<T> Default for CaseInsensitiveHashMap<T> {
     }
 }
 
-/// Persistence helper used by `PACTConfig` for case-insensitive set membership.
+/// Persistence helper for case-insensitive set membership.
 ///
 /// Stored values are always lowercase so serialized config remains normalized.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CaseInsensitiveHashSet {
     set: HashSet<String>,
 }
 
+#[allow(dead_code)]
 impl CaseInsensitiveHashSet {
     /// Creates an empty set.
     pub fn new() -> Self {
@@ -147,10 +149,6 @@ pub struct PACTConfig {
     #[serde(rename = "CustomProcesses", default)]
     pub custom_processes: Vec<CustomProcess>,
 
-    /// Launcher names that trigger auto-mode assignment.
-    #[serde(rename = "AutoModeLaunchers")]
-    pub auto_mode_launchers: CaseInsensitiveHashSet,
-
     /// Process scan interval in milliseconds.
     #[serde(rename = "ScanInterval")]
     pub scan_interval: u64,
@@ -162,35 +160,10 @@ pub struct PACTConfig {
 
 impl Default for PACTConfig {
     fn default() -> Self {
-        let mut auto_mode_launchers = CaseInsensitiveHashSet::new();
-
-        for name in [
-            "Battle.net",
-            "Battle.net Launcher",
-            "EALink",
-            "EpicGamesLauncher",
-            "GalaxyClient",
-            "GalaxyClientService",
-            "Origin",
-            "OriginClientService",
-            "steam",
-            "steamservice",
-            "UbisoftGameLauncher",
-            "UbisoftGameLauncher64",
-            "UnrealEngineLauncher",
-            "Uplay",
-            "UplayService",
-            "x64launcher",
-            "x86launcher",
-        ] {
-            auto_mode_launchers.insert(name.to_string());
-        }
-
         Self {
             groups: Vec::new(),
             process_assignments: CaseInsensitiveHashMap::new(),
             custom_processes: Vec::new(),
-            auto_mode_launchers,
             // 3s is the baseline poll interval used when no config file exists yet.
             scan_interval: 3000,
             launch_minimized: false,
@@ -205,11 +178,6 @@ impl PACTConfig {
     pub fn default_group(&self) -> Option<&ProcessGroup> {
         // C# note: `|g| ...` is a closure (lambda) parameter list.
         self.groups.iter().find(|g| g.is_default)
-    }
-
-    /// Returns the configured auto-mode target group.
-    pub fn auto_mode_group(&self) -> Option<&ProcessGroup> {
-        self.groups.iter().find(|g| g.is_auto_mode_group)
     }
 
     /// Finds a group by name, case-insensitively.
@@ -253,12 +221,6 @@ impl PACTConfig {
             }
         }
 
-        if group.is_auto_mode_group {
-            for g in &mut self.groups {
-                g.is_auto_mode_group = false;
-            }
-        }
-
         self.groups.push(group);
         true
     }
@@ -282,14 +244,6 @@ impl PACTConfig {
             for (i, g) in self.groups.iter_mut().enumerate() {
                 if i != pos {
                     g.is_default = false;
-                }
-            }
-        }
-
-        if new_group.is_auto_mode_group {
-            for (i, g) in self.groups.iter_mut().enumerate() {
-                if i != pos {
-                    g.is_auto_mode_group = false;
                 }
             }
         }
@@ -395,24 +349,6 @@ impl PACTConfig {
         self.process_assignments
             .get(process_name)
             .map(String::as_str)
-    }
-
-    /// Adds a non-empty launcher name to auto-mode.
-    pub fn add_to_auto_mode_launchers(&mut self, name: String) {
-        if !name.is_empty() {
-            self.auto_mode_launchers.insert(name);
-        }
-    }
-
-    /// Removes a launcher from auto-mode.
-    /// Returns `false` for an empty name or missing entry.
-    pub fn remove_from_auto_mode_launchers(&mut self, name: &str) -> bool {
-        if !name.is_empty() && self.auto_mode_launchers.contains(name) {
-            self.auto_mode_launchers.remove(name);
-            true
-        } else {
-            false
-        }
     }
 
     /// Finds a custom process by name, case-insensitively.

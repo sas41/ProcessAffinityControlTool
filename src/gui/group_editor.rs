@@ -26,8 +26,7 @@ impl ProcessGroupExt for ProcessGroup {
             priority: None,
             niceness: None,
             is_default: false,
-            is_blacklist: false,
-            is_auto_mode_group: false,
+            capture_sub_processes: false,
         }
     }
 }
@@ -45,9 +44,8 @@ pub struct GroupEditor {
     pub editing_name: String,
 
     pub name: String,
-    pub is_blacklist: bool,
     pub is_default: bool,
-    pub is_auto_mode_group: bool,
+    pub capture_sub_processes: bool,
 
     pub affinity_enabled: bool,
     // One checkbox entry per logical core index.
@@ -71,8 +69,7 @@ pub struct GroupEditor {
 pub enum Message {
     NameChanged(String),
     ToggleDefault,
-    ToggleBlacklist,
-    ToggleAutoModeGroup,
+    ToggleCaptureSubProcesses,
     ToggleAffinity,
     TogglePriority,
     PriorityChanged(usize),
@@ -144,9 +141,8 @@ impl GroupEditor {
             open: true,
             editing_name,
             name: g.name,
-            is_blacklist: g.is_blacklist,
             is_default: g.is_default,
-            is_auto_mode_group: g.is_auto_mode_group,
+            capture_sub_processes: g.capture_sub_processes,
             affinity_enabled,
             core_checks,
             priority_enabled,
@@ -189,22 +185,9 @@ impl GroupEditor {
             Message::NameChanged(name) => self.name = name,
             Message::ToggleDefault => {
                 self.is_default = !self.is_default;
-                if self.is_default {
-                    self.is_blacklist = false;
-                }
             }
-            Message::ToggleBlacklist => {
-                self.is_blacklist = !self.is_blacklist;
-                if self.is_blacklist {
-                    self.is_default = false;
-                    self.is_auto_mode_group = false;
-                }
-            }
-            Message::ToggleAutoModeGroup => {
-                self.is_auto_mode_group = !self.is_auto_mode_group;
-                if self.is_auto_mode_group {
-                    self.is_blacklist = false;
-                }
+            Message::ToggleCaptureSubProcesses => {
+                self.capture_sub_processes = !self.capture_sub_processes;
             }
             Message::ToggleAffinity => self.affinity_enabled = !self.affinity_enabled,
             Message::TogglePriority => self.priority_enabled = !self.priority_enabled,
@@ -276,7 +259,7 @@ impl GroupEditor {
             }
             Message::Ok => {
                 // Blacklist groups are match-only filters; they do not apply affinity/priority.
-                let affinity = if self.affinity_enabled && !self.is_blacklist {
+                let affinity = if self.affinity_enabled {
                     let cores: Vec<usize> = self
                         .core_checks
                         .iter()
@@ -288,7 +271,7 @@ impl GroupEditor {
                 } else {
                     None
                 };
-                let priority = if self.priority_enabled && !self.is_blacklist {
+                let priority = if self.priority_enabled {
                     #[cfg(target_os = "linux")]
                     {
                         self.niceness_text
@@ -306,7 +289,7 @@ impl GroupEditor {
                     None
                 };
                 #[cfg(target_os = "linux")]
-                let niceness = if self.priority_enabled && !self.is_blacklist {
+                let niceness = if self.priority_enabled {
                     self.niceness_text
                         .trim()
                         .parse::<i32>()
@@ -324,8 +307,7 @@ impl GroupEditor {
                     #[cfg(not(target_os = "linux"))]
                     niceness: None,
                     is_default: self.is_default,
-                    is_blacklist: self.is_blacklist,
-                    is_auto_mode_group: self.is_auto_mode_group,
+                    capture_sub_processes: self.capture_sub_processes,
                 });
                 self.open = false;
             }
@@ -364,29 +346,55 @@ impl GroupEditor {
         .spacing(10)
         .align_y(Alignment::Center);
 
+        let flag_check = |icon: iced::widget::Text<'static>,
+                          color: Color,
+                          checked: bool,
+                          label: &'static str,
+                          msg: AppMessage| {
+            row![
+                icon.size(13).color(color),
+                checkbox(checked)
+                    .label(label)
+                    .on_toggle(move |_| msg.clone()),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+        };
+
         let flags_row = row![
-            checkbox(self.is_default)
-                .label("Default group")
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleDefault)),
+            flag_check(
+                iced_fonts::bootstrap::award_fill(),
+                Color::from_rgb(0.43, 0.73, 1.0),
+                self.is_default,
+                "Default group",
+                AppMessage::GroupEditorMessage(Message::ToggleDefault),
+            ),
             Space::new().width(12.0),
-            checkbox(self.is_blacklist)
-                .label("Blacklist")
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleBlacklist)),
-            Space::new().width(12.0),
-            checkbox(self.is_auto_mode_group)
-                .label("Auto Mode group")
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAutoModeGroup)),
+            flag_check(
+                iced_fonts::bootstrap::diagram_two_fill(),
+                Color::from_rgb(0.55, 0.85, 1.0),
+                self.capture_sub_processes,
+                "Capture Sub-Processes",
+                AppMessage::GroupEditorMessage(Message::ToggleCaptureSubProcesses),
+            ),
         ]
         .spacing(10);
 
         let affinity_section = {
-            let toggle = checkbox(self.affinity_enabled)
-                .label("Set CPU affinity")
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAffinity));
+            let toggle = row![
+                iced_fonts::bootstrap::cpu_fill()
+                    .size(13)
+                    .color(Color::from_rgb(0.55, 0.94, 0.72)),
+                checkbox(self.affinity_enabled)
+                    .label("Set CPU affinity")
+                    .on_toggle(|_| AppMessage::GroupEditorMessage(Message::ToggleAffinity)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center);
 
             let mut content = Column::new().spacing(10).push(toggle);
 
-            if self.affinity_enabled && !self.is_blacklist {
+            if self.affinity_enabled {
                 let quick_select = row![
                     button("All").on_press(AppMessage::GroupEditorMessage(Message::SelectAllCores)),
                     button("None")
@@ -434,13 +442,20 @@ impl GroupEditor {
         };
 
         let priority_section = {
-            let toggle = checkbox(self.priority_enabled)
-                .label("Set priority")
-                .on_toggle(|_| AppMessage::GroupEditorMessage(Message::TogglePriority));
+            let toggle = row![
+                iced_fonts::bootstrap::stars()
+                    .size(13)
+                    .color(Color::from_rgb(0.92, 0.68, 1.0)),
+                checkbox(self.priority_enabled)
+                    .label("Set priority")
+                    .on_toggle(|_| AppMessage::GroupEditorMessage(Message::TogglePriority)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center);
 
             let mut content = Column::new().spacing(10).push(toggle);
 
-            if self.priority_enabled && !self.is_blacklist {
+            if self.priority_enabled {
                 let make_btn = |i: usize, lbl: &'static str| {
                     let selected = self.priority_index == i;
                     button(lbl)

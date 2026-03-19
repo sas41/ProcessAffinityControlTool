@@ -17,17 +17,16 @@ use std::path::PathBuf;
 
 use core::elevation::is_elevated;
 use core::topology::TopologyView;
-use gui::AppCache;
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
-use gui::tab_auto_mode;
 use gui::tab_configure;
 use gui::tab_options;
 use gui::tab_status;
+use gui::AppCache;
 use iced::widget::tooltip;
 use iced::widget::tooltip::Position as TooltipPosition;
-use iced::widget::{Space, button, column, container, row, scrollable, text};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
 
@@ -142,14 +141,14 @@ pub struct ProcessAffinityApp {
     /// Custom process editor modal state.
     pub custom_process_editor: Option<CustomProcessEditor>,
 
-    /// Input value for new launcher names.
-    pub new_launcher_name: String,
-
     /// Process currently being dragged.
     pub dragging_process: Option<String>,
 
     /// Whether the groups-help overlay is visible.
     pub groups_help_open: bool,
+
+    /// Whether child processes are shown in the Configure tab tree views.
+    pub show_children: bool,
 
     /// Process-list filter text.
     pub process_filter: String,
@@ -192,9 +191,9 @@ impl Default for ProcessAffinityApp {
             group_editor: None,
             process_editor: None,
             custom_process_editor: None,
-            new_launcher_name: String::new(),
             dragging_process: None,
             groups_help_open: false,
+            show_children: true,
             process_filter: String::new(),
             search_pulse_phase: 0.0,
             icon_rgba,
@@ -209,7 +208,6 @@ impl Default for ProcessAffinityApp {
 fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
     AppCache {
         is_scanner_active: pact.pact_process_overwatch.is_scanner_active(),
-        is_auto_mode: pact.pact_process_overwatch.is_auto_mode(),
         is_elevated: is_elevated(),
         groups: pact.get_groups(),
         running: pact.get_all_running_processes(),
@@ -219,10 +217,14 @@ fn build_cache(pact: &core::pact_instance::PACTInstance) -> AppCache {
         protected_names: pact.get_protected_processes(),
         managed_count: pact.pact_process_overwatch.managed_process_count(),
         cpu_stats: pact.pact_process_overwatch.cpu_stats(),
-        launchers: pact.get_auto_mode_launchers(),
-        detections: pact.get_auto_mode_detection_pairs(),
         scan_interval: pact.pact_process_overwatch.scan_interval(),
         launch_minimized: pact.launch_minimized(),
+        child_process_parents: pact
+            .pact_process_overwatch
+            .capture_sub_processes_data()
+            .into_iter()
+            .map(|(child, parent_lc, _group)| (child.to_lowercase(), parent_lc))
+            .collect(),
     }
 }
 
@@ -304,9 +306,9 @@ fn open_or_focus_main_window(app: &mut ProcessAffinityApp) -> Task<gui::Message>
 
 #[cfg(target_os = "windows")]
 fn enforce_single_instance() -> bool {
-    use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
-    use windows::Win32::System::Threading::CreateMutexW;
     use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::System::Threading::CreateMutexW;
 
     let name: Vec<u16> = "Global\\ProcessAffinityControlTool.Singleton"
         .encode_utf16()
@@ -455,12 +457,6 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 gui::tab_status::Message::ToggleScanner => {
                     app.pact.toggle_process_overwatch();
                 }
-                gui::tab_status::Message::ToggleAutoMode => {
-                    app.pact.toggle_auto_mode();
-                }
-                gui::tab_status::Message::RequestFreshScan => {
-                    app.pact.request_fresh_scan();
-                }
                 gui::tab_status::Message::OpenInaccessibleList => {
                     app.inaccessible_list_open = true;
                 }
@@ -561,28 +557,6 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 }
             }
         }
-
-        gui::Message::AutoModeMessage(msg) => match msg {
-            gui::tab_auto_mode::Message::ToggleAutoMode => {
-                app.pact.toggle_auto_mode();
-                app.cache = build_cache(&app.pact);
-            }
-
-            gui::tab_auto_mode::Message::AddLauncher(name) => {
-                app.pact.add_to_auto_mode_launchers(&name);
-                app.new_launcher_name = String::new();
-                app.cache = build_cache(&app.pact);
-            }
-
-            gui::tab_auto_mode::Message::RemoveLauncher(name) => {
-                app.pact.remove_from_auto_mode_launchers(&name);
-                app.cache = build_cache(&app.pact);
-            }
-
-            gui::tab_auto_mode::Message::UpdateNewLauncherName(name) => {
-                app.new_launcher_name = name;
-            }
-        },
 
         gui::Message::OptionsMessage(msg) => {
             match msg {
@@ -758,6 +732,9 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
         gui::Message::HideGroupsHelp => {
             app.groups_help_open = false;
         }
+        gui::Message::ToggleShowChildren => {
+            app.show_children = !app.show_children;
+        }
 
         gui::Message::GroupEditorResult(_) => {}
         gui::Message::GroupEditorDelete(_) => {}
@@ -805,20 +782,10 @@ fn view_groups_help() -> Element<'static, gui::Message> {
         .spacing(8)
         .align_y(Alignment::Center),
         row![
-            iced_fonts::bootstrap::ban_fill()
+            iced_fonts::bootstrap::slash_circle_fill()
                 .size(13)
                 .color(Color::from_rgb(1.0, 0.44, 0.44)),
-            text("Blacklist group")
-                .size(13)
-                .color(Color::from_rgb(0.75, 0.75, 0.75)),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-        row![
-            iced_fonts::bootstrap::lightning_charge_fill()
-                .size(13)
-                .color(Color::from_rgb(0.99, 0.85, 0.24)),
-            text("Auto Mode group or auto-assigned process")
+            text("Emergent blacklist — group applies no affinity or priority")
                 .size(13)
                 .color(Color::from_rgb(0.75, 0.75, 0.75)),
         ]
@@ -854,6 +821,16 @@ fn view_groups_help() -> Element<'static, gui::Message> {
         ]
         .spacing(8)
         .align_y(Alignment::Center),
+        row![
+            iced_fonts::bootstrap::diagram_two_fill()
+                .size(13)
+                .color(Color::from_rgb(0.55, 0.85, 1.0)),
+            text("Group or custom process has Capture Sub-Processes enabled")
+                .size(13)
+                .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
     ]
     .spacing(4);
 
@@ -866,9 +843,9 @@ fn view_groups_help() -> Element<'static, gui::Message> {
         section("Affinity", "Restricts which CPU cores a group's processes may run on. Useful for isolating workloads to P-cores, E-cores, or a specific CCD."),
         section("Priority / Niceness", "Priority buttons are scheduling presets. On Linux, niceness is also supported directly in editors. If a process is inaccessible, priority/niceness changes may be skipped."),
         section("Default Group", "Processes not explicitly assigned to any group automatically land here. Only one group can be the default at a time. These assignments are ephemeral and are not written into config."),
-        section("Auto Mode", "Processes detected under registered launcher trees are routed to the Auto Mode group (if configured). These assignments are also ephemeral."),
-        section("Blacklist", "Processes assigned to a blacklist group are skipped entirely — no affinity, priority, or niceness changes are applied."),
+        section("Blacklist (emergent)", "A group with neither Set CPU Affinity nor Set Priority enabled acts as a blacklist — assigned processes are tracked but no settings are changed. The slash icon appears automatically; there is no explicit blacklist toggle."),
         section("Custom Processes", "Individual processes with their own affinity and priority, independent of any group."),
+        section("Capture Sub-Processes", "When enabled on a group or custom process, any process whose parent chain includes a configured process automatically inherits its affinity and priority settings. Resolution priority: Explicit assignment → Capture Sub-Processes inheritance → Default group. For example, add Steam to a group and enable Capture Sub-Processes — every game or subprocess Steam spawns will follow that group's settings unless they have their own explicit assignment."),
         Space::new().height(8),
         button(text("Close").size(13))
             .on_press(gui::Message::HideGroupsHelp)
@@ -971,10 +948,6 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             gui::TabId::Configure,
             TabLabel::Text("Configure".to_string()),
         )
-        .push(
-            gui::TabId::AutoMode,
-            TabLabel::Text("Auto Mode".to_string()),
-        )
         .push(gui::TabId::Options, TabLabel::Text("Options".to_string()))
         .set_active_tab(&app.active_tab)
         .tab_width(iced::Length::Fixed(112.0))
@@ -1056,9 +1029,9 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             app.dragging_process.as_deref(),
             &app.process_filter,
             app.search_pulse_phase,
+            app.show_children,
         )
         .into(),
-        gui::TabId::AutoMode => tab_auto_mode::view(&app.cache, &app.new_launcher_name).into(),
         gui::TabId::Options => tab_options::view(&app.cache, app.num_cores).into(),
     };
 
@@ -1173,9 +1146,7 @@ fn main() -> iced::Result {
 
     iced::daemon(boot, update, daemon_view)
         .settings(settings)
-        .title(|_app: &ProcessAffinityApp, _id| {
-            format!("PACT - {}", env!("APP_VERSION"))
-        })
+        .title(|_app: &ProcessAffinityApp, _id| format!("PACT - {}", env!("APP_VERSION")))
         .subscription(subscription)
         .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
         .theme(iced::Theme::Dark)

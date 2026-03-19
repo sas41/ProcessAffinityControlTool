@@ -189,9 +189,11 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
                     .unwrap_or_else(|| "-".to_string()),
             };
 
+            let has_affinity = g.affinity.is_some();
+            let has_priority = g.priority.is_some() || g.niceness.is_some();
             let flags_str = if g.is_default {
                 "default".to_string()
-            } else if g.is_blacklist {
+            } else if !has_affinity && !has_priority {
                 "blacklist".to_string()
             } else {
                 "-".to_string()

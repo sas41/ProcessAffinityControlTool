@@ -3,9 +3,8 @@ use iced::widget::{
     button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
 };
 
-use iced::{Alignment, Background, Border, Color, Element, Length};
-
 use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
+use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::gui::priority::{index_to_priority, priority_to_index, PRIORITY_LABELS};
 use crate::gui::topology_diagram::draw_core_selector;
@@ -53,6 +52,9 @@ pub struct CustomProcessEditor {
 
     /// Controls whether the destructive delete confirmation is currently shown.
     pub confirm_delete: bool,
+
+    /// Whether child processes of this process should inherit its settings.
+    pub capture_sub_processes: bool,
 }
 
 /// User actions emitted by this editor UI.
@@ -92,6 +94,8 @@ pub enum Message {
     ConfirmDelete,
     /// Dismiss delete warning and keep editing.
     CancelDelete,
+    /// Toggle whether child processes inherit this process's settings.
+    ToggleCaptureSubProcesses,
 }
 
 impl CustomProcessEditor {
@@ -142,6 +146,7 @@ impl CustomProcessEditor {
             affinity_enabled,
             core_checks,
             priority_enabled,
+            capture_sub_processes: cp.capture_sub_processes,
             priority_index: {
                 #[cfg(target_os = "linux")]
                 {
@@ -297,9 +302,13 @@ impl CustomProcessEditor {
                     niceness,
                     #[cfg(not(target_os = "linux"))]
                     niceness: None,
+                    capture_sub_processes: self.capture_sub_processes,
                 });
 
                 self.open = false;
+            }
+            Message::ToggleCaptureSubProcesses => {
+                self.capture_sub_processes = !self.capture_sub_processes
             }
             Message::Cancel => self.open = false,
             Message::Delete => {
@@ -353,9 +362,16 @@ impl CustomProcessEditor {
         };
 
         let affinity_section = {
-            let toggle = checkbox(self.affinity_enabled)
-                .label("Set CPU affinity")
-                .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::ToggleAffinity));
+            let toggle = row![
+                iced_fonts::bootstrap::cpu_fill()
+                    .size(13)
+                    .color(Color::from_rgb(0.55, 0.94, 0.72)),
+                checkbox(self.affinity_enabled)
+                    .label("Set CPU affinity")
+                    .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::ToggleAffinity)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center);
 
             let mut content = Column::new().spacing(10).push(toggle);
 
@@ -411,9 +427,16 @@ impl CustomProcessEditor {
         };
 
         let priority_section = {
-            let toggle = checkbox(self.priority_enabled)
-                .label("Set priority")
-                .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::TogglePriority));
+            let toggle = row![
+                iced_fonts::bootstrap::stars()
+                    .size(13)
+                    .color(Color::from_rgb(0.92, 0.68, 1.0)),
+                checkbox(self.priority_enabled)
+                    .label("Set priority")
+                    .on_toggle(|_| AppMessage::CustomProcessEditorMessage(Message::TogglePriority)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center);
 
             let mut content = Column::new().spacing(10).push(toggle);
 
@@ -468,6 +491,21 @@ impl CustomProcessEditor {
                         .spacing(8)
                         .align_y(Alignment::Center),
                     );
+
+                    let niceness_negative = self
+                        .niceness_text
+                        .trim()
+                        .parse::<i32>()
+                        .ok()
+                        .is_some_and(|v| v < 0);
+
+                    if niceness_negative {
+                        content = content.push(
+                            text("Warning: negative niceness values may require elevated permissions and can fail for protected processes.")
+                                .size(12)
+                                .color(Color::from_rgb(0.96, 0.82, 0.25)),
+                        );
+                    }
                 }
             }
 
@@ -528,9 +566,23 @@ impl CustomProcessEditor {
             )
             .push(ok_button);
 
+        let children_row = row![
+            iced_fonts::bootstrap::diagram_two_fill()
+                .size(13)
+                .color(Color::from_rgb(0.55, 0.85, 1.0)),
+            checkbox(self.capture_sub_processes)
+                .label("Capture Sub-Processes")
+                .on_toggle(|_| {
+                    AppMessage::CustomProcessEditorMessage(Message::ToggleCaptureSubProcesses)
+                }),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
         let mut content = column![
             text(title).size(18),
             name_row,
+            children_row,
             container(affinity_section).padding(10),
             container(priority_section).padding(10),
         ]
