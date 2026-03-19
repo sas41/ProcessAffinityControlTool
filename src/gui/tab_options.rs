@@ -3,7 +3,8 @@
 use iced::font;
 
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, slider, text, Column, Container, Space,
+    button, checkbox, column, container, row, scrollable, slider, stack, text, Column, Container,
+    Space,
 };
 
 use iced::{Alignment, Background, Color, Font, Length};
@@ -285,5 +286,22 @@ pub fn view<'a>(cache: &'a AppCache, num_cores: usize) -> Container<'a, AppMessa
     .spacing(16)
     .padding(14);
 
-    container(scrollable(content).height(Length::Fill))
+    let version_label = container(
+        text(env!("APP_VERSION"))
+            .size(11)
+            .color(Color::from_rgba(1.0, 1.0, 1.0, 0.25)),
+    )
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 8.0,
+        bottom: 6.0,
+        left: 0.0,
+    })
+    .align_right(Length::Fill)
+    .align_bottom(Length::Fill);
+
+    container(stack![
+        container(scrollable(content).height(Length::Fill)),
+        version_label
+    ])
 }

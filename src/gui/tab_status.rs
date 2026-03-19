@@ -1,7 +1,8 @@
 // Status tab UI.
 use iced::widget::tooltip::Position as TooltipPosition;
 use iced::widget::{
-    button, column, container, progress_bar, row, scrollable, text, tooltip, Column, Row, Space,
+    button, column, container, progress_bar, row, scrollable, stack, text, tooltip, Column, Row,
+    Space,
 };
 use iced::{Alignment, Background, Color, Element, Length};
 
@@ -275,5 +276,19 @@ pub fn view<'a>(
     .spacing(10)
     .padding(10);
 
-    container(content)
+    let version_label = container(
+        text(env!("APP_VERSION"))
+            .size(11)
+            .color(Color::from_rgba(1.0, 1.0, 1.0, 0.25)),
+    )
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 8.0,
+        bottom: 6.0,
+        left: 0.0,
+    })
+    .align_right(Length::Fill)
+    .align_bottom(Length::Fill);
+
+    container(stack![container(content), version_label])
 }

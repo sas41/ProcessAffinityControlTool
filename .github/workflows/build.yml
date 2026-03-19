@@ -1,0 +1,78 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: pact-linux
+            binary: process_affinity_control_tool
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: pact-windows
+            binary: process_affinity_control_tool.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: pact-macos
+            binary: process_affinity_control_tool
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version string
+        id: version
+        shell: bash
+        run: |
+          HASH=$(git rev-parse --short=7 HEAD)
+          VERSION=$(date -u +'%Y-%m-%d-%H%M')-${HASH}
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libxdo-dev \
+            pkg-config
+
+      - name: Build
+        env:
+          APP_VERSION: ${{ steps.version.outputs.value }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          if-no-files-found: error

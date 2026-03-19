@@ -1,4 +1,11 @@
 fn main() {
+    // Expose APP_VERSION to the crate via env!("APP_VERSION").
+    // In CI the workflow sets APP_VERSION to the datever string, e.g. 2026-03-19-0429-a1b2c3d.
+    // For local builds a fallback of "dev" is used.
+    let app_version = std::env::var("APP_VERSION").unwrap_or_else(|_| "dev".to_string());
+    println!("cargo:rustc-env=APP_VERSION={app_version}");
+    println!("cargo:rerun-if-env-changed=APP_VERSION");
+
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os != "windows" {
         return;

@@ -1173,6 +1173,9 @@ fn main() -> iced::Result {
 
     iced::daemon(boot, update, daemon_view)
         .settings(settings)
+        .title(|_app: &ProcessAffinityApp, _id| {
+            format!("PACT - {}", env!("APP_VERSION"))
+        })
         .subscription(subscription)
         .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
         .theme(iced::Theme::Dark)
