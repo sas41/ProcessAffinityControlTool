@@ -626,10 +626,14 @@ fn distinct_positive_values<I: Iterator<Item = isize>>(iter: I) -> Vec<isize> {
 }
 
 /// Step 5: Compute shared caches (L3+) for a set of threads.
+///
+/// Each unique `(level, group_id)` pair represents one physical cache instance.
+/// Multiple instances at the same level (e.g. two L3 caches on a dual-CCD chip)
+/// are kept as separate slices so the label can show "64 MB (2 x 32 MB)".
 fn compute_shared_caches(threads: &[&ThreadInfo]) -> Vec<CacheEntry> {
-    // Group L3+ caches by (level, group_id) and collect sizes.
+    // Deduplicate by (level, group_id) so each physical cache instance
+    // appears exactly once, even though many threads reference it.
     let mut by_level_group: BTreeMap<(u8, isize), u64> = BTreeMap::new();
-    let mut level_slices: BTreeMap<u8, Vec<u64>> = BTreeMap::new();
 
     for t in threads {
         for c in &t.caches {
@@ -641,15 +645,15 @@ fn compute_shared_caches(threads: &[&ThreadInfo]) -> Vec<CacheEntry> {
         }
     }
 
-    // Collect unique cache instances per level.
+    // Group the distinct cache instances by level. Do NOT dedup by size —
+    // two 32 MB L3 caches are two separate slices, not one.
+    let mut level_slices: BTreeMap<u8, Vec<u64>> = BTreeMap::new();
     for (&(level, _), &size) in &by_level_group {
         level_slices.entry(level).or_default().push(size);
     }
 
-    // Dedup slices per level.
     for slices in level_slices.values_mut() {
         slices.sort_unstable();
-        slices.dedup();
     }
 
     level_slices
