@@ -2,7 +2,7 @@ use iced::widget::{button, column, container, text, Column, Row, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::core::process_config::ProcessGroup;
-use crate::core::topology::format_freq_ghz;
+use crate::core::topology::{format_freq_mhz, ComputeGroupView, TopologyView};
 use crate::gui::Message;
 
 fn soft_group_background(accent: Color) -> Color {
@@ -14,9 +14,6 @@ fn soft_group_background(accent: Color) -> Color {
 }
 
 /// Returns a stable accent color for a process group index.
-///
-/// The palette intentionally wraps with modulo so group `n` always maps to
-/// the same color across frames, even when there are more groups than colors.
 pub fn group_color(group_index: usize) -> Color {
     const COLORS: &[Color] = &[
         Color::from_rgb(0.0, 0.58, 1.0),
@@ -32,9 +29,6 @@ pub fn group_color(group_index: usize) -> Color {
 }
 
 /// Returns a muted color for top-level hardware sections.
-///
-/// These colors are separate from process-group accents so hardware grouping
-/// remains visually distinct from process assignment overlays.
 pub fn group_section_color(index: usize) -> Color {
     const COLS: &[Color] = &[
         Color::from_rgb(0.31, 0.47, 0.70),
@@ -48,48 +42,30 @@ pub fn group_section_color(index: usize) -> Color {
 /// Legacy layout constants retained for compatibility.
 #[allow(dead_code)]
 pub const THREAD_W: f32 = 52.0;
-
 #[allow(dead_code)]
 pub const THREAD_H: f32 = 68.0;
-
 #[allow(dead_code)]
 pub const THREAD_GAP: f32 = 3.0;
-
 #[allow(dead_code)]
 pub const CORE_PAD: f32 = 5.0;
-
 #[allow(dead_code)]
 pub const CORE_LABEL_H: f32 = 13.0;
-
 #[allow(dead_code)]
 pub const CACHE_LINE_H: f32 = 11.0;
-
 #[allow(dead_code)]
 pub const CORE_GAP: f32 = 6.0;
-
 #[allow(dead_code)]
 pub const GROUP_PAD: f32 = 10.0;
-
 #[allow(dead_code)]
 pub const GROUP_FOOTER_H: f32 = 14.0;
-
 #[allow(dead_code)]
 pub const GROUP_FOOTER_CACHE_H: f32 = 12.0;
 
 /// Maps each logical core to the last process group that includes it.
-///
-/// Later groups overwrite earlier ones; this gives a single, deterministic
-/// color per thread when affinity sets overlap.
-/// C# note: `&[T]` is a borrowed read-only slice (like `IReadOnlyList<T>` view),
-/// and `Vec<Option<usize>>` is a growable list of nullable-ish indices.
 pub fn build_core_group_map(groups: &[ProcessGroup], num_cores: usize) -> Vec<Option<usize>> {
     let mut map = vec![None; num_cores];
-
-    // C# note: `iter().enumerate()` is like `Select((item, index) => ...)`.
     for (gi, g) in groups.iter().enumerate() {
-        // C# note: `if let Some(...) = ...` is pattern-matching for "has value".
         if let Some(ref aff) = g.affinity {
-            // C# note: `for &c in &list` iterates borrowed items and copies each `usize` value.
             for &c in &aff.core_list {
                 if c < num_cores {
                     map[c] = Some(gi);
@@ -97,29 +73,21 @@ pub fn build_core_group_map(groups: &[ProcessGroup], num_cores: usize) -> Vec<Op
             }
         }
     }
-
     map
 }
-/// Draws one topology section: core grid first, then label/cache footer.
-///
-/// The explicit `'a` lifetime ties returned widget elements to borrowed data
-/// from `group`. The `move` style closure copies `fill_col` by value so each
-/// thread bar keeps its own color without borrowing temporary locals.
-/// C# note: `Element<'a, Message>` means "UI node borrowing data valid for `'a`"
-/// and carrying `Message` as its event type.
+
+/// Draws one compute group section: core grid first, then label/cache footer.
 pub fn draw_topology_group<'a>(
-    group: &'a crate::core::topology::TopLevelGroup,
+    group: &'a ComputeGroupView,
     stats: &crate::core::process_overwatch::CpuStats,
     core_group_map: &[Option<usize>],
     stroke_col: Color,
 ) -> Element<'a, Message> {
-    // C# note: `4usize` uses an explicit unsigned type suffix.
     let cores_per_row = 4usize;
 
     let core_widgets: Vec<Element<'a, Message>> = group
-        .physical_cores
+        .cores
         .iter()
-        // C# note: `|x| { ... }` is a closure/lambda.
         .map(|phys_core| {
             let thread_widgets: Vec<Element<'a, Message>> = phys_core
                 .threads
@@ -133,7 +101,6 @@ pub fn draw_topology_group<'a>(
                         .unwrap_or(0.0);
                     let fill_col = core_group_map
                         .get(thread.logical_index)
-                        // C# note: `|&g| g` destructures `&Option<usize>` to `Option<usize>`.
                         .and_then(|&g| g)
                         .map_or(Color::from_rgb(0.36, 0.36, 0.36), group_color);
 
@@ -190,8 +157,8 @@ pub fn draw_topology_group<'a>(
             let mut core_meta = Column::new().spacing(2).align_x(Alignment::Center).push(
                 text(format!(
                     "C{} {}",
-                    phys_core.physical_index,
-                    format_freq_ghz(phys_core.max_freq_khz)
+                    phys_core.core_index,
+                    format_freq_mhz(phys_core.max_freq_mhz)
                 ))
                 .size(10)
                 .color(Color::from_rgb(0.68, 0.68, 0.68)),
@@ -253,19 +220,9 @@ pub fn draw_topology_group<'a>(
 
     let footer = column![
         text(group.label.as_str()).size(12).color(stroke_col),
-        text(format!(
-            "Max {}",
-            format_freq_ghz(
-                group
-                    .physical_cores
-                    .iter()
-                    .map(|c| c.max_freq_khz)
-                    .max()
-                    .unwrap_or(0)
-            )
-        ))
-        .size(10)
-        .color(Color::from_rgb(0.72, 0.72, 0.72)),
+        text(format!("Max {}", format_freq_mhz(group.max_freq_mhz)))
+            .size(10)
+            .color(Color::from_rgb(0.72, 0.72, 0.72)),
         group
             .shared_caches
             .iter()
@@ -299,13 +256,14 @@ pub fn draw_topology_group<'a>(
 
 /// Compact topology-based core selector used by editors.
 pub fn draw_core_selector<Message: Clone + 'static>(
-    topo_view: &crate::core::topology::TopologyView,
+    topo_view: &TopologyView,
     core_checks: &[bool],
     topology_group_repeat: usize,
     on_toggle: fn(usize, bool) -> Message,
 ) -> Column<'static, Message> {
+    let groups = topo_view.all_compute_groups();
     let repeat = topology_group_repeat.max(1);
-    let total_groups = topo_view.groups.len() * repeat;
+    let total_groups = groups.len() * repeat;
     let groups_per_row = if total_groups <= 2 {
         total_groups.max(1)
     } else {
@@ -314,10 +272,10 @@ pub fn draw_core_selector<Message: Clone + 'static>(
     let mut group_cards: Vec<Element<'static, Message>> = Vec::new();
 
     for rep in 0..repeat {
-        for (gi, group) in topo_view.groups.iter().enumerate() {
-            let color_idx = rep * topo_view.groups.len() + gi;
+        for (gi, group) in groups.iter().enumerate() {
+            let color_idx = rep * groups.len() + gi;
             let mut core_rows = Column::new().spacing(4);
-            let mut core_iter = group.physical_cores.iter();
+            let mut core_iter = group.cores.iter();
 
             while let Some(first_core) = core_iter.next() {
                 let mut row = Row::new().spacing(4);
@@ -371,12 +329,9 @@ pub fn draw_core_selector<Message: Clone + 'static>(
 
                     row = row.push(
                         container(
-                            column![
-                                text(format!("C{}", core.physical_index)).size(10),
-                                thread_row
-                            ]
-                            .spacing(2)
-                            .align_x(Alignment::Center),
+                            column![text(format!("C{}", core.core_index)).size(10), thread_row]
+                                .spacing(2)
+                                .align_x(Alignment::Center),
                         )
                         .padding(4)
                         .width(Length::FillPortion(1))

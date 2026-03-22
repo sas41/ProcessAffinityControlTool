@@ -26,7 +26,7 @@ use gui::tab_status;
 use gui::AppCache;
 use iced::widget::tooltip;
 use iced::widget::tooltip::Position as TooltipPosition;
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
 
@@ -907,16 +907,19 @@ fn view_groups_help() -> Element<'static, gui::Message> {
             ..Default::default()
         });
 
-    container(dialog)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-            ..Default::default()
-        })
-        .into()
+    mouse_area(
+        container(dialog)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                ..Default::default()
+            }),
+    )
+    .on_press(gui::Message::HideGroupsHelp)
+    .into()
 }
 
 fn view_inaccessible_processes_modal(names: Vec<String>) -> Element<'static, gui::Message> {
@@ -969,16 +972,19 @@ fn view_inaccessible_processes_modal(names: Vec<String>) -> Element<'static, gui
             ..Default::default()
         });
 
-    container(dialog)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-            ..Default::default()
-        })
-        .into()
+    mouse_area(
+        container(dialog)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                ..Default::default()
+            }),
+    )
+    .on_press(gui::Message::CloseInaccessibleList)
+    .into()
 }
 
 fn view_topology_details_modal(
@@ -1004,7 +1010,7 @@ fn view_topology_details_modal(
         container(
             scrollable(text(report).size(12).width(Length::Fill),)
                 .width(Length::Fill)
-                .height(Length::Fixed(360.0)),
+                .height(Length::Fill),
         )
         .width(Length::Fill)
         .padding(10)
@@ -1027,8 +1033,9 @@ fn view_topology_details_modal(
     .spacing(12)
     .padding(24);
 
-    let dialog = container(content)
+    let dialog = container(scrollable(content).height(Length::Shrink))
         .max_width(820)
+        .max_height(700)
         .style(|_| iced::widget::container::Style {
             background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
             border: Border {
@@ -1039,16 +1046,19 @@ fn view_topology_details_modal(
             ..Default::default()
         });
 
-    container(dialog)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-            ..Default::default()
-        })
-        .into()
+    mouse_area(
+        container(dialog)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                ..Default::default()
+            }),
+    )
+    .on_press(gui::Message::CloseTopologyDetails)
+    .into()
 }
 
 /// Render the app view for the active tab and overlays.

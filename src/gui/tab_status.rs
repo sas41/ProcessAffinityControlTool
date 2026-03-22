@@ -162,7 +162,8 @@ pub fn view<'a>(
     let core_group_map = build_core_group_map(&cache.groups, num_cores);
 
     let repeat = topology_group_repeat.max(1);
-    let rendered_group_count = topo_view.groups.len() * repeat;
+    let compute_groups = topo_view.all_compute_groups();
+    let rendered_group_count = compute_groups.len() * repeat;
     let groups_per_row = match rendered_group_count {
         0 => 1,
         1..=3 => rendered_group_count,
@@ -172,8 +173,8 @@ pub fn view<'a>(
 
     let mut topology_elements: Vec<Element<AppMessage>> = Vec::new();
     for rep in 0..repeat {
-        for (gi, topo_group) in topo_view.groups.iter().enumerate() {
-            let color_idx = rep * topo_view.groups.len() + gi;
+        for (gi, topo_group) in compute_groups.iter().enumerate() {
+            let color_idx = rep * compute_groups.len() + gi;
             topology_elements.push(draw_topology_group(
                 topo_group,
                 &cache.cpu_stats,

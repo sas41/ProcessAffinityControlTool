@@ -1,5 +1,6 @@
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, text, text_input, Column, Row, Space,
+    button, checkbox, column, container, mouse_area, row, scrollable, text, text_input, Column,
+    Row, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
@@ -96,9 +97,9 @@ impl GroupEditor {
         let topo = crate::core::topology::get_topology();
         let max_logical = topo
             .topology_view()
-            .groups
+            .all_compute_groups()
             .iter()
-            .flat_map(|g| g.physical_cores.iter())
+            .flat_map(|g| g.cores.iter())
             .flat_map(|c| c.threads.iter())
             .map(|t| t.logical_index)
             .max()
@@ -609,15 +610,18 @@ impl GroupEditor {
                 ..Default::default()
             });
 
-        container(dialog)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                ..Default::default()
-            })
-            .into()
+        mouse_area(
+            container(dialog)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(|_| iced::widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                    ..Default::default()
+                }),
+        )
+        .on_press(AppMessage::GroupEditorMessage(Message::Cancel))
+        .into()
     }
 }
