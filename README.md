@@ -35,6 +35,10 @@ For Pact 1.1.0, please check help.txt for a list of commands, or type the help c
 If you find this tool helpful and wish to donate, you can do so here: https://www.paypal.me/sas41
 ---
 
+## Development
+
+Development and source build instructions live in `DEVELOPMENT.md`.
+
 # Gallery:
 #### PACT for Windows (PACTWPF):
 #### PACT for Windows Overview/Tutorial (4 minutes)

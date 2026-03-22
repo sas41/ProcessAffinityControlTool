@@ -1,0 +1,114 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Debug (Windows Elevated Attach)",
+      "preLaunchTask": "run built exe (elevated)",
+      "configurations": ["Debug (Windows Attach Only)"]
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Debug (LLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "-p", "process_affinity_control_tool"],
+        "filter": {
+          "name": "process_affinity_control_tool",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1",
+        "RUST_LOG": "debug"
+      },
+      "sourceLanguages": ["rust"]
+    },
+    {
+      "name": "Debug (GDB)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/process_affinity_control_tool",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "RUST_LOG", "value": "debug" }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "rust-gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Set disassembly flavor to Intel",
+          "text": "-gdb-set disassembly-flavor intel",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "cargo build (debug)"
+    },
+    {
+      "name": "Debug (Windows)",
+      "type": "cppvsdbg",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "environment": [
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "RUST_LOG", "value": "debug" }
+      ]
+    },
+    {
+      "name": "Debug (Windows Attach Only)",
+      "type": "cppvsdbg",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "environment": [
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "RUST_LOG", "value": "debug" }
+      ]
+    },
+    {
+      "name": "Run (no debugger)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["run", "--bin", "process_affinity_control_tool"],
+        "filter": {
+          "name": "process_affinity_control_tool",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "name": "Debug Topology Report (LLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["run", "--bin", "process_affinity_control_tool", "--", "--topology-report"],
+        "filter": {
+          "name": "process_affinity_control_tool",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+name: Build
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version string
+        id: version
+        run: |
+          HASH=$(git rev-parse --short=7 HEAD)
+          VERSION=$(date -u +'%Y-%m-%d-%H%M')-${HASH}
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: pact-linux
+            binary: process_affinity_control_tool
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: pact-windows
+            binary: process_affinity_control_tool.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libxdo-dev \
+            pkg-config
+
+      - name: Build
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: cargo build --release --target ${{ matrix.target }} --config profile.release.debug=false
+
+      - name: Strip binary
+        if: matrix.os != 'windows-latest'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          if-no-files-found: error
+
+  build-macos:
+    name: Build (macos-latest) [optional]
+    needs: prepare
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install macOS system dependencies
+        run: brew install autoconf automake libtool
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macOS-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macOS-cargo-
+
+      - name: Build
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: cargo build --release --target x86_64-apple-darwin --config profile.release.debug=false
+
+      - name: Strip binary
+        run: strip target/x86_64-apple-darwin/release/process_affinity_control_tool
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pact-macos
+          path: target/x86_64-apple-darwin/release/process_affinity_control_tool
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [prepare, build, build-macos]
+    # Run even if build-macos failed or was cancelled; only require the main builds.
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.version }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/pact-linux/process_affinity_control_tool
+            artifacts/pact-windows/process_affinity_control_tool.exe
+            artifacts/pact-macos/process_affinity_control_tool

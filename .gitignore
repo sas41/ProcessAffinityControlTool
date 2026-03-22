@@ -3,6 +3,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# PACT build output
+/publish/
+/target/cross-*/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -351,3 +355,11 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# Old source code archive
+/old/
+
+
+# Added by cargo
+
+/target

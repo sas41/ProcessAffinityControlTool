@@ -1,0 +1,50 @@
+[package]
+name = "process_affinity_control_tool"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iced = { version = "*", default-features = true, features = ["tokio", "wgpu", "fira-sans", "svg", "advanced"] }
+iced_aw = { version = "*" }
+iced_fonts = { version = "*", features = ["bootstrap"] }
+tray-icon = { version = "*", default-features = false }
+image = { version = "*", default-features = true, features = ["png"] }
+sysinfo = { version = "*", features = ["default"] }
+hwlocality = { version = "1.0.0-alpha.11", features = ["hwloc-latest", "vendored"] }
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+rfd = "*"
+unicase = "*"
+num_cpus = "*"
+dirs = "*"
+bitflags = "*"
+open = "*"
+tokio = { version = "*", features = ["full"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "*", features = [
+    "Win32_System_Threading",
+    "Win32_System_Power",
+    "Win32_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Security",
+] }
+windows-elevate = "*"
+
+[build-dependencies]
+winres = "*"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "*", features = ["sched", "process"] }
+gtk = "*"
+
+[target.'cfg(unix)'.dependencies]
+libc = "*"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+debug = true

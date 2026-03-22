@@ -1,0 +1,20 @@
+# ── Cross-compilation linker configuration ───────────────────────────────────
+#
+# Windows (x86_64-pc-windows-gnu)
+#   Uses lld-link (LLVM linker, ships with LLVM/clang on Linux) instead of
+#   requiring mingw-w64-gcc.  If you have mingw-w64 installed you can switch
+#   this to:  linker = "x86_64-w64-mingw32-gcc"
+#
+# macOS (x86_64-apple-darwin)
+#   Requires osxcross on Linux.  On a Mac this entry is unused — the default
+#   Apple toolchain linker is used automatically.
+#   If you have osxcross, set linker to your osxcross ld wrapper, e.g.:
+#     linker = "/opt/osxcross/bin/x86_64-apple-darwin23-clang"
+
+[target.x86_64-pc-windows-gnu]
+linker  = "x86_64-w64-mingw32-gcc"
+ar      = "x86_64-w64-mingw32-ar"
+
+# Uncomment and adjust if you have osxcross installed:
+# [target.x86_64-apple-darwin]
+# linker = "/opt/osxcross/bin/x86_64-apple-darwin23-clang"
