@@ -1,6 +1,8 @@
 use crate::gui::Message as AppMessage;
 use iced::font;
-use iced::widget::{button, column, container, row, text, text_input, Row, Space};
+use iced::widget::{
+    button, column, container, mouse_area, opaque, row, stack, text, text_input, Row, Space,
+};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 /// Modal editor state for creating or editing one process-to-group assignment.
 ///
@@ -257,15 +259,26 @@ impl ProcessEditor {
                 });
 
         // Full-screen dimmed backdrop with centered dialog.
-        container(dialog)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                ..Default::default()
-            })
-            .into()
+        opaque(stack![
+            mouse_area(
+                container(Space::new().width(Length::Fill).height(Length::Fill))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                        ..Default::default()
+                    })
+            )
+            .on_press(AppMessage::ProcessEditorMessage(Message::Cancel)),
+            mouse_area(
+                container(dialog)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            )
+            .on_press(AppMessage::Noop),
+        ])
+        .into()
     }
 }

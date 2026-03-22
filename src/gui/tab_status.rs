@@ -28,6 +28,7 @@ pub fn view<'a>(
     num_cores: usize,
     topology_group_repeat: usize,
     topology_classification: &'a str,
+    topology_accuracy_warnings: &'a [String],
 ) -> container::Container<'a, AppMessage> {
     // Button colors encode runtime state at a glance.
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
@@ -128,20 +129,64 @@ pub fn view<'a>(
     ]
     .align_y(Alignment::Center);
 
-    let classification_btn = button(
+    let classification_label: Element<AppMessage> = if topology_accuracy_warnings.is_empty() {
         text(format!("Topology: {topology_classification}"))
             .size(12)
-            .color(Color::from_rgb(0.62, 0.78, 1.0)),
-    )
-    .on_press(AppMessage::StatusMessage(Message::OpenTopologyDetails))
-    .padding([2, 6])
-    .style(|_, _| button::Style {
-        background: None,
-        text_color: Color::from_rgb(0.62, 0.78, 1.0),
-        border: iced::Border::default(),
-        shadow: iced::Shadow::default(),
-        snap: false,
-    });
+            .color(Color::from_rgb(0.62, 0.78, 1.0))
+            .into()
+    } else {
+        row![
+            text(format!("Topology: {topology_classification}"))
+                .size(12)
+                .color(Color::from_rgb(0.62, 0.78, 1.0)),
+            text("⚠").size(12).color(Color::from_rgb(0.96, 0.82, 0.25)),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center)
+        .into()
+    };
+
+    let classification_btn = button(classification_label)
+        .on_press(AppMessage::StatusMessage(Message::OpenTopologyDetails))
+        .padding([2, 6])
+        .style(|_, _| button::Style {
+            background: None,
+            text_color: Color::from_rgb(0.62, 0.78, 1.0),
+            border: iced::Border::default(),
+            shadow: iced::Shadow::default(),
+            snap: false,
+        });
+
+    let classification_btn: Element<AppMessage> = if topology_accuracy_warnings.is_empty() {
+        classification_btn.into()
+    } else {
+        let warning_text = topology_accuracy_warnings.join("\n");
+        tooltip(
+            classification_btn,
+            container(
+                text(warning_text)
+                    .size(12)
+                    .color(Color::from_rgb(0.92, 0.88, 0.72))
+                    .width(Length::Shrink),
+            )
+            .max_width(420)
+            .width(Length::Shrink),
+            TooltipPosition::Top,
+        )
+        .gap(10)
+        .padding(10)
+        .snap_within_viewport(true)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.11, 0.11, 0.11))),
+            border: iced::Border {
+                color: Color::from_rgb(0.40, 0.40, 0.40),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        })
+        .into()
+    };
 
     let cpu_bar = row![
         text("CPU Total:").size(14).font(iced::Font {

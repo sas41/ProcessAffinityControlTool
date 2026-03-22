@@ -16,7 +16,9 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 use core::elevation::is_elevated;
-use core::topology::{topology_classification_label, topology_details_report, TopologyView};
+use core::topology::{
+    topology_classification_label, topology_details_report, topology_runtime_info, TopologyView,
+};
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -26,7 +28,7 @@ use gui::tab_status;
 use gui::AppCache;
 use iced::widget::tooltip;
 use iced::widget::tooltip::Position as TooltipPosition;
-use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space};
+use iced::widget::{button, column, container, mouse_area, opaque, row, scrollable, stack, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length, Settings, Subscription, Task};
 use iced_aw::{TabBar, TabLabel};
 
@@ -135,6 +137,11 @@ pub struct ProcessAffinityApp {
     /// Label describing how topology grouping was classified.
     pub topology_classification_label: String,
 
+    /// Runtime environment details used in topology report UI.
+    pub topology_os_label: String,
+    pub topology_hypervisor_on: bool,
+    pub topology_accuracy_warnings: Vec<String>,
+
     /// Detailed topology report rendered in the topology-details modal.
     pub topology_details_report: String,
 
@@ -189,6 +196,7 @@ impl Default for ProcessAffinityApp {
         pact.start_scan_handler();
         let cache = build_cache(&pact);
         let topo_view = core::topology::get_topology().topology_view();
+        let runtime_info = topology_runtime_info();
         let icon_rgba = load_icon_rgba();
         let tray_state = create_tray(&icon_rgba.0, icon_rgba.1, icon_rgba.2);
         Self {
@@ -201,6 +209,9 @@ impl Default for ProcessAffinityApp {
             inaccessible_list_open: false,
             topology_details_open: false,
             topology_classification_label: topology_classification_label().to_string(),
+            topology_os_label: runtime_info.os_label,
+            topology_hypervisor_on: runtime_info.hypervisor_on,
+            topology_accuracy_warnings: runtime_info.accuracy_warnings,
             topology_details_report: topology_details_report(),
             topology_copy_notice_ticks: 0,
             topology_group_repeat: 1,
@@ -603,6 +614,8 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
             app.cache = build_cache(&app.pact);
         }
 
+        gui::Message::Noop => {}
+
         gui::Message::OpenInaccessibleList => {
             app.inaccessible_list_open = true;
         }
@@ -907,18 +920,26 @@ fn view_groups_help() -> Element<'static, gui::Message> {
             ..Default::default()
         });
 
-    mouse_area(
-        container(dialog)
+    opaque(stack![
+        mouse_area(
+            container(Space::new().width(Length::Fill).height(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(|_| iced::widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                    ..Default::default()
+                })
+        )
+        .on_press(gui::Message::HideGroupsHelp),
+        mouse_area(
+            container(dialog)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                ..Default::default()
-            }),
-    )
-    .on_press(gui::Message::HideGroupsHelp)
+        )
+        .on_press(gui::Message::Noop),
+    ])
     .into()
 }
 
@@ -972,23 +993,33 @@ fn view_inaccessible_processes_modal(names: Vec<String>) -> Element<'static, gui
             ..Default::default()
         });
 
-    mouse_area(
-        container(dialog)
+    opaque(stack![
+        mouse_area(
+            container(Space::new().width(Length::Fill).height(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(|_| iced::widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                    ..Default::default()
+                })
+        )
+        .on_press(gui::Message::CloseInaccessibleList),
+        mouse_area(
+            container(dialog)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                ..Default::default()
-            }),
-    )
-    .on_press(gui::Message::CloseInaccessibleList)
+        )
+        .on_press(gui::Message::Noop),
+    ])
     .into()
 }
 
 fn view_topology_details_modal(
     classification_label: String,
+    os_label: String,
+    hypervisor_on: bool,
     report: String,
     copied_notice: bool,
 ) -> Element<'static, gui::Message> {
@@ -1000,6 +1031,15 @@ fn view_topology_details_modal(
         text(format!("Classification: {classification_label}"))
             .size(13)
             .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        text(format!("OS: {os_label}"))
+            .size(13)
+            .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        text(format!(
+            "Hypervisor: {}",
+            if hypervisor_on { "On" } else { "Off" }
+        ))
+        .size(13)
+        .color(Color::from_rgb(0.75, 0.75, 0.75)),
         text(if copied_notice {
             "Copied report to clipboard"
         } else {
@@ -1046,18 +1086,26 @@ fn view_topology_details_modal(
             ..Default::default()
         });
 
-    mouse_area(
-        container(dialog)
+    opaque(stack![
+        mouse_area(
+            container(Space::new().width(Length::Fill).height(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(|_| iced::widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                    ..Default::default()
+                })
+        )
+        .on_press(gui::Message::CloseTopologyDetails),
+        mouse_area(
+            container(dialog)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                ..Default::default()
-            }),
-    )
-    .on_press(gui::Message::CloseTopologyDetails)
+        )
+        .on_press(gui::Message::Noop),
+    ])
     .into()
 }
 
@@ -1144,6 +1192,7 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             app.num_cores,
             app.topology_group_repeat,
             &app.topology_classification_label,
+            &app.topology_accuracy_warnings,
         )
         .into(),
         gui::TabId::Configure => tab_configure::view(
@@ -1191,6 +1240,8 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             .push(main_layout)
             .push(view_topology_details_modal(
                 app.topology_classification_label.clone(),
+                app.topology_os_label.clone(),
+                app.topology_hypervisor_on,
                 app.topology_details_report.clone(),
                 app.topology_copy_notice_ticks > 0,
             ))
