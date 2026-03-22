@@ -17,7 +17,8 @@ impl PlatformTopologyProvider for WindowsProvider {
         }
 
         // Step 1: Gather cache topology from GetLogicalProcessorInformationEx.
-        let cache_info = query_cache_topology(num_cpus);
+        let mut cache_info = query_cache_topology(num_cpus);
+        apply_l3_size_overrides(&mut cache_info, num_cpus);
         // Step 2: Gather NUMA topology.
         let numa_info = query_numa_topology(num_cpus);
         // Step 3: Gather processor group/package topology for CCD-like grouping.
@@ -179,6 +180,182 @@ fn query_cache_topology(num_cpus: usize) -> CacheTopologyResult {
 
     result.num_l3_groups = l3_groups.len();
     result
+}
+
+/// On some Windows systems (notably Ryzen X3D), Win32 may report identical L3
+/// sizes for all CCDs. Cross-check with per-thread CPUID (preferred) and hwloc
+/// and override each Win32 L3 group's size by majority vote.
+fn apply_l3_size_overrides(cache_info: &mut CacheTopologyResult, num_cpus: usize) {
+    let cpuid_l3_by_thread = query_cpuid_l3_sizes(num_cpus);
+    let hwloc_l3_by_thread = query_hwloc_l3_sizes(num_cpus);
+    if cpuid_l3_by_thread.is_empty() && hwloc_l3_by_thread.is_empty() {
+        return;
+    }
+
+    for entry in &mut cache_info.entries {
+        if entry.level != 3 || entry.threads.is_empty() {
+            continue;
+        }
+
+        let mut counts_cpuid: HashMap<u64, usize> = HashMap::new();
+        let mut counts_hwloc: HashMap<u64, usize> = HashMap::new();
+        for &t in &entry.threads {
+            if let Some(&sz) = cpuid_l3_by_thread.get(&t)
+                && sz > 0
+            {
+                *counts_cpuid.entry(sz).or_insert(0) += 1;
+            }
+            if let Some(&sz) = hwloc_l3_by_thread.get(&t)
+                && sz > 0
+            {
+                *counts_hwloc.entry(sz).or_insert(0) += 1;
+            }
+        }
+
+        // Prefer CPUID-derived cache sizes for AMD X3D asymmetry.
+        let best = counts_cpuid
+            .iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(&size, _)| size)
+            .or_else(|| {
+                counts_hwloc
+                    .iter()
+                    .max_by_key(|(_, count)| *count)
+                    .map(|(&size, _)| size)
+            });
+
+        if let Some(best_size) = best {
+            entry.size_bytes = best_size;
+        }
+    }
+}
+
+/// Read L3 cache size per logical thread via CPUID by temporarily pinning the
+/// current thread to each logical processor.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn query_cpuid_l3_sizes(num_cpus: usize) -> HashMap<usize, u64> {
+    use windows::Win32::System::Threading::{
+        GetCurrentProcessorNumber, GetCurrentThread, SetThreadAffinityMask, Sleep, SwitchToThread,
+    };
+
+    let mut map = HashMap::new();
+    let bits = std::mem::size_of::<usize>() * 8;
+    let max = num_cpus.min(bits);
+
+    for li in 0..max {
+        let mask = 1usize << li;
+        let old_mask = unsafe { SetThreadAffinityMask(GetCurrentThread(), mask) };
+        if old_mask == 0 {
+            continue;
+        }
+
+        // Ensure we actually execute CPUID on the targeted logical processor.
+        // Affinity changes can be observed lazily, so spin/yield briefly.
+        for _ in 0..64 {
+            let cur = unsafe { GetCurrentProcessorNumber() as usize };
+            if cur == li {
+                break;
+            }
+            unsafe {
+                let _ = SwitchToThread();
+                Sleep(0);
+            }
+        }
+
+        let l3_ext = query_l3_size_for_current_cpu_leaf(0x8000_001D);
+        let l3_det = query_l3_size_for_current_cpu_leaf(0x0000_0004);
+        let l3_size = l3_ext.max(l3_det);
+
+        unsafe {
+            let _ = SetThreadAffinityMask(GetCurrentThread(), old_mask);
+        }
+
+        if l3_size > 0 {
+            map.insert(li, l3_size);
+        }
+    }
+
+    map
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn query_l3_size_for_current_cpu_leaf(leaf: u32) -> u64 {
+    let mut l3_size = 0u64;
+
+    for subleaf in 0u32..32u32 {
+        #[cfg(target_arch = "x86")]
+        let regs = core::arch::x86::__cpuid_count(leaf, subleaf);
+        #[cfg(target_arch = "x86_64")]
+        let regs = core::arch::x86_64::__cpuid_count(leaf, subleaf);
+
+        let cache_type = regs.eax & 0x1f;
+        if cache_type == 0 {
+            break;
+        }
+
+        let level = (regs.eax >> 5) & 0x7;
+        if level == 3 {
+            let line_size = u64::from((regs.ebx & 0x0fff) + 1);
+            let partitions = u64::from(((regs.ebx >> 12) & 0x03ff) + 1);
+            let ways = u64::from(((regs.ebx >> 22) & 0x03ff) + 1);
+            let sets = u64::from(regs.ecx) + 1;
+            let size = line_size
+                .saturating_mul(partitions)
+                .saturating_mul(ways)
+                .saturating_mul(sets);
+            l3_size = l3_size.max(size);
+        }
+    }
+
+    l3_size
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn query_cpuid_l3_sizes(_num_cpus: usize) -> HashMap<usize, u64> {
+    HashMap::new()
+}
+
+/// Read L3 cache size for each logical thread from hwloc ancestry.
+fn query_hwloc_l3_sizes(num_cpus: usize) -> HashMap<usize, u64> {
+    use hwlocality::{
+        object::{attributes::ObjectAttributes, types::ObjectType},
+        topology::Topology,
+    };
+
+    let mut map = HashMap::new();
+
+    let topo = match Topology::new() {
+        Ok(t) => t,
+        Err(_) => return map,
+    };
+
+    for pu in topo.objects_with_type(ObjectType::PU) {
+        let li = pu.logical_index();
+        if li >= num_cpus {
+            continue;
+        }
+
+        let mut cur = pu.parent();
+        while let Some(anc) = cur {
+            match anc.object_type() {
+                t if t.is_cpu_cache() => {
+                    if let Some(ObjectAttributes::Cache(ca)) = anc.attributes()
+                        && ca.depth() == 3
+                    {
+                        if let Some(sz) = ca.size() {
+                            map.insert(li, sz.get());
+                        }
+                        break;
+                    }
+                }
+                ObjectType::Die | ObjectType::Package | ObjectType::Machine => break,
+                _ => {}
+            }
+            cur = anc.parent();
+        }
+    }
+
+    map
 }
 
 // ── NUMA topology ────────────────────────────────────────────────────

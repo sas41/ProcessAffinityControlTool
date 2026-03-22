@@ -1,7 +1,7 @@
 // Modal editor for creating or updating a custom process rule.
 use iced::widget::{
-    button, checkbox, column, container, mouse_area, row, scrollable, text, text_input, Column,
-    Row, Space,
+    button, checkbox, column, container, mouse_area, opaque, row, scrollable, stack, text,
+    text_input, Column, Row, Space,
 };
 
 use crate::core::process_config::{AffinityConfig, CustomProcess, ProcessPriority};
@@ -612,18 +612,26 @@ impl CustomProcessEditor {
                 ..Default::default()
             });
 
-        mouse_area(
-            container(dialog)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(|_| iced::widget::container::Style {
-                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                    ..Default::default()
-                }),
-        )
-        .on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel))
+        opaque(stack![
+            mouse_area(
+                container(Space::new().width(Length::Fill).height(Length::Fill))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                        ..Default::default()
+                    })
+            )
+            .on_press(AppMessage::CustomProcessEditorMessage(Message::Cancel)),
+            mouse_area(
+                container(dialog)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            )
+            .on_press(AppMessage::Noop),
+        ])
         .into()
     }
 }

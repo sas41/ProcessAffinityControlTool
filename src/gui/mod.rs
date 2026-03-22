@@ -66,6 +66,9 @@ pub enum TabId {
 /// Carries tab-specific messages and app-wide commands through one update path.
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Intentional no-op used to absorb modal clicks.
+    Noop,
+
     // Tab messages.
     StatusMessage(tab_status::Message),
     ConfigureMessage(tab_configure::Message),

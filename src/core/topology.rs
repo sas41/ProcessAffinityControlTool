@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 use std::sync::OnceLock;
+use sysinfo::System;
 
 // ── Re-exports used by GUI consumers ─────────────────────────────────
 
@@ -526,6 +527,13 @@ impl CpuTopology {
             "classification      : {}",
             self.classification_label()
         );
+        let runtime = topology_runtime_info();
+        let _ = writeln!(&mut out, "os                  : {}", runtime.os_label);
+        let _ = writeln!(
+            &mut out,
+            "hypervisor          : {}",
+            if runtime.hypervisor_on { "On" } else { "Off" }
+        );
         let _ = writeln!(&mut out, "logical processors  : {}", self.threads.len());
 
         let all_groups = view.all_compute_groups();
@@ -733,6 +741,108 @@ fn write_group_report(out: &mut String, group: &ComputeGroupView) {
     }
 
     let _ = writeln!(out);
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn is_hypervisor_present() -> bool {
+    #[cfg(target_arch = "x86")]
+    let info = core::arch::x86::__cpuid(1);
+    #[cfg(target_arch = "x86_64")]
+    let info = core::arch::x86_64::__cpuid(1);
+    (info.ecx & (1 << 31)) != 0
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn is_hypervisor_present() -> bool {
+    false
+}
+
+#[derive(Debug, Clone)]
+pub struct TopologyRuntimeInfo {
+    pub os_label: String,
+    pub hypervisor_on: bool,
+    pub accuracy_warnings: Vec<String>,
+}
+
+pub fn topology_runtime_info() -> TopologyRuntimeInfo {
+    let os_label = detect_os_label();
+    let hypervisor_on = is_hypervisor_present();
+    let mut accuracy_warnings = Vec::new();
+
+    if hypervisor_on {
+        accuracy_warnings.push(
+            "Hypervisor is active: cache/topology data may be virtualized or flattened."
+                .to_string(),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    if os_label.starts_with("Windows 10") {
+        accuracy_warnings.push(
+            "Windows 10 may expose less accurate asymmetric CCD/cache details on newer CPUs."
+                .to_string(),
+        );
+    }
+
+    TopologyRuntimeInfo {
+        os_label,
+        hypervisor_on,
+        accuracy_warnings,
+    }
+}
+
+fn detect_os_label() -> String {
+    let name = System::name().unwrap_or_default();
+    let long = System::long_os_version().unwrap_or_default();
+
+    #[cfg(target_os = "windows")]
+    {
+        if long.contains("Windows 11") {
+            return "Windows 11".to_string();
+        }
+        if long.contains("Windows 10") {
+            return "Windows 10".to_string();
+        }
+        if !long.is_empty() {
+            return long;
+        }
+        if name.is_empty() {
+            "Windows".to_string()
+        } else {
+            name
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if !long.is_empty() {
+            return long;
+        }
+        return if name.is_empty() {
+            "Linux".to_string()
+        } else {
+            name
+        };
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if !long.is_empty() {
+            return long;
+        }
+        return "macOS".to_string();
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        if !long.is_empty() {
+            return long;
+        }
+        if !name.is_empty() {
+            return name;
+        }
+        "Unknown OS".to_string()
+    }
 }
 
 // ── Formatting helpers ───────────────────────────────────────────────
