@@ -29,6 +29,21 @@ impl PlatformTopologyProvider for WindowsProvider {
         // Step 6: hwloc for P/E classification if available.
         let kind_info = query_hwloc_kinds(num_cpus);
 
+        // Normalize L3 group ids to dense CCD indices (0..N-1) for reporting.
+        let mut l3_group_ids: Vec<isize> = cache_info
+            .entries
+            .iter()
+            .filter(|e| e.level == 3)
+            .map(|e| e.cache_id)
+            .collect();
+        l3_group_ids.sort_unstable();
+        l3_group_ids.dedup();
+        let l3_group_to_ccd: HashMap<isize, isize> = l3_group_ids
+            .into_iter()
+            .enumerate()
+            .map(|(dense, raw)| (raw, dense as isize))
+            .collect();
+
         let mut threads = Vec::with_capacity(num_cpus);
         for li in 0..num_cpus {
             let core_index = core_info.thread_to_core.get(&li).copied().unwrap_or(li);
@@ -56,7 +71,7 @@ impl PlatformTopologyProvider for WindowsProvider {
             let ccd_index = caches
                 .iter()
                 .find(|c| c.level == 3)
-                .map(|c| c.group_id)
+                .and_then(|c| l3_group_to_ccd.get(&c.group_id).copied())
                 .unwrap_or(-1);
 
             let numa_index = numa_info.thread_to_numa.get(&li).copied().unwrap_or(-1);
@@ -142,7 +157,8 @@ fn query_cache_topology(num_cpus: usize) -> CacheTopologyResult {
         let size = cache.CacheSize as u64;
 
         if level > 0 && size > 0 {
-            let threads = mask_to_indices(cache.Anonymous.GroupMask.Mask as u64, num_cpus);
+            let mask = unsafe { cache.Anonymous.GroupMask.Mask as u64 };
+            let threads = mask_to_indices(mask, num_cpus);
             let cid = cache_id_counter;
             cache_id_counter += 1;
 
@@ -197,7 +213,8 @@ fn query_numa_topology(num_cpus: usize) -> NumaTopologyResult {
 
         let numa = unsafe { &entry.Anonymous.NumaNode };
         let node_number = numa.NodeNumber as isize;
-        let threads = mask_to_indices(numa.Anonymous.GroupMask.Mask as u64, num_cpus);
+        let mask = unsafe { numa.Anonymous.GroupMask.Mask as u64 };
+        let threads = mask_to_indices(mask, num_cpus);
         for t in threads {
             result.thread_to_numa.insert(t, node_number);
         }
