@@ -21,7 +21,7 @@ impl PlatformTopologyProvider for WindowsProvider {
         // Step 2: Gather NUMA topology.
         let numa_info = query_numa_topology(num_cpus);
         // Step 3: Gather processor group/package topology for CCD-like grouping.
-        let group_info = query_processor_groups(num_cpus);
+        let _group_info = query_processor_groups(num_cpus);
         // Step 4: Gather frequency data.
         let freq_info = query_frequencies(num_cpus);
         // Step 5: Gather core mapping (which threads share a physical core).
@@ -111,7 +111,7 @@ struct CacheTopologyResult {
 
 fn query_cache_topology(num_cpus: usize) -> CacheTopologyResult {
     use windows::Win32::System::SystemInformation::{
-        GetLogicalProcessorInformationEx, RelationCache, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+        RelationCache, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     };
 
     let mut result = CacheTopologyResult {
@@ -142,7 +142,7 @@ fn query_cache_topology(num_cpus: usize) -> CacheTopologyResult {
         let size = cache.CacheSize as u64;
 
         if level > 0 && size > 0 {
-            let threads = mask_to_indices(cache.GroupMask.Mask as u64, num_cpus);
+            let threads = mask_to_indices(cache.Anonymous.GroupMask.Mask as u64, num_cpus);
             let cid = cache_id_counter;
             cache_id_counter += 1;
 
@@ -173,7 +173,7 @@ struct NumaTopologyResult {
 
 fn query_numa_topology(num_cpus: usize) -> NumaTopologyResult {
     use windows::Win32::System::SystemInformation::{
-        GetLogicalProcessorInformationEx, RelationNumaNode, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+        RelationNumaNode, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     };
 
     let mut result = NumaTopologyResult {
@@ -197,7 +197,7 @@ fn query_numa_topology(num_cpus: usize) -> NumaTopologyResult {
 
         let numa = unsafe { &entry.Anonymous.NumaNode };
         let node_number = numa.NodeNumber as isize;
-        let threads = mask_to_indices(numa.GroupMask.Mask as u64, num_cpus);
+        let threads = mask_to_indices(numa.Anonymous.GroupMask.Mask as u64, num_cpus);
         for t in threads {
             result.thread_to_numa.insert(t, node_number);
         }
@@ -230,8 +230,7 @@ struct CoreTopologyResult {
 
 fn query_core_topology(num_cpus: usize) -> CoreTopologyResult {
     use windows::Win32::System::SystemInformation::{
-        GetLogicalProcessorInformationEx, RelationProcessorCore,
-        SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+        RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     };
 
     let mut result = CoreTopologyResult {
@@ -390,8 +389,8 @@ fn reclassify_amd_x3d(threads: &mut [ThreadInfo]) {
     let max_size = *sizes.iter().max().unwrap();
     let high_cache_groups: Vec<isize> = l3_groups
         .iter()
-        .filter(|(_, &sz)| sz == max_size)
-        .map(|(&id, _)| id)
+        .filter(|(_, sz)| **sz == max_size)
+        .map(|(id, _)| *id)
         .collect();
 
     for t in threads.iter_mut() {
