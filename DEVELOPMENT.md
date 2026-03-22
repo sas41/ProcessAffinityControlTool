@@ -22,6 +22,36 @@ The workspace includes tasks and launch configurations in:
 - `.vscode/tasks.json`
 - `.vscode/launch.json`
 
+## Cross-compilation prerequisites
+
+### Linux to Windows
+
+The Windows platform provider uses `Win32_System_SystemInformation` which
+requires MinGW's `dlltool` to generate import libraries at build time.
+
+**Arch / CachyOS:**
+
+```bash
+sudo pacman -S mingw-w64-toolchain
+rustup target add x86_64-pc-windows-gnu
+```
+
+**Debian / Ubuntu:**
+
+```bash
+sudo apt install mingw-w64
+rustup target add x86_64-pc-windows-gnu
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install mingw64-gcc
+rustup target add x86_64-pc-windows-gnu
+```
+
+Building natively on Windows with MSVC does not require MinGW.
+
 ## Build from source
 
 Run from repository root:
