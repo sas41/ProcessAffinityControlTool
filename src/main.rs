@@ -16,7 +16,7 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 use core::elevation::is_elevated;
-use core::topology::TopologyView;
+use core::topology::{topology_classification_label, topology_details_report, TopologyView};
 use gui::custom_process_editor::CustomProcessEditor;
 use gui::group_editor::GroupEditor;
 use gui::process_editor::ProcessEditor;
@@ -129,6 +129,18 @@ pub struct ProcessAffinityApp {
     /// Whether to show inaccessible-process list overlay.
     pub inaccessible_list_open: bool,
 
+    /// Whether to show topology-details overlay.
+    pub topology_details_open: bool,
+
+    /// Label describing how topology grouping was classified.
+    pub topology_classification_label: String,
+
+    /// Detailed topology report rendered in the topology-details modal.
+    pub topology_details_report: String,
+
+    /// Flash state for copy action in topology modal.
+    pub topology_copy_notice_ticks: u8,
+
     /// Multiplier used to duplicate topology groups for layout testing.
     pub topology_group_repeat: usize,
 
@@ -187,6 +199,10 @@ impl Default for ProcessAffinityApp {
             topo_view,
             is_elevated: is_elevated(),
             inaccessible_list_open: false,
+            topology_details_open: false,
+            topology_classification_label: topology_classification_label().to_string(),
+            topology_details_report: topology_details_report(),
+            topology_copy_notice_ticks: 0,
             topology_group_repeat: 1,
             group_editor: None,
             process_editor: None,
@@ -419,6 +435,9 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
     match message {
         gui::Message::Tick => {
             app.cache = build_cache(&app.pact);
+            if app.topology_copy_notice_ticks > 0 {
+                app.topology_copy_notice_ticks -= 1;
+            }
         }
 
         gui::Message::SearchPulse => {
@@ -459,6 +478,9 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
                 }
                 gui::tab_status::Message::OpenInaccessibleList => {
                     app.inaccessible_list_open = true;
+                }
+                gui::tab_status::Message::OpenTopologyDetails => {
+                    app.topology_details_open = true;
                 }
             }
             app.cache = build_cache(&app.pact);
@@ -587,6 +609,25 @@ fn update(app: &mut ProcessAffinityApp, message: gui::Message) -> Task<gui::Mess
 
         gui::Message::CloseInaccessibleList => {
             app.inaccessible_list_open = false;
+        }
+
+        gui::Message::OpenTopologyDetails => {
+            app.topology_details_open = true;
+            app.topology_copy_notice_ticks = 0;
+        }
+
+        gui::Message::CloseTopologyDetails => {
+            app.topology_details_open = false;
+            app.topology_copy_notice_ticks = 0;
+        }
+
+        gui::Message::CopyTopologyDetails => {
+            return iced::clipboard::write(app.topology_details_report.clone())
+                .map(|_: ()| gui::Message::TopologyDetailsCopied);
+        }
+
+        gui::Message::TopologyDetailsCopied => {
+            app.topology_copy_notice_ticks = 2;
         }
 
         gui::Message::ProcessEditorMessage(msg) => {
@@ -940,6 +981,76 @@ fn view_inaccessible_processes_modal(names: Vec<String>) -> Element<'static, gui
         .into()
 }
 
+fn view_topology_details_modal(
+    classification_label: String,
+    report: String,
+    copied_notice: bool,
+) -> Element<'static, gui::Message> {
+    let content = column![
+        text("Topology Details").size(18).font(iced::Font {
+            weight: iced::font::Weight::Bold,
+            ..Default::default()
+        }),
+        text(format!("Classification: {classification_label}"))
+            .size(13)
+            .color(Color::from_rgb(0.75, 0.75, 0.75)),
+        text(if copied_notice {
+            "Copied report to clipboard"
+        } else {
+            ""
+        })
+        .size(12)
+        .color(Color::from_rgb(0.55, 0.86, 0.64)),
+        container(
+            scrollable(text(report).size(12).width(Length::Fill),)
+                .width(Length::Fill)
+                .height(Length::Fixed(360.0)),
+        )
+        .width(Length::Fill)
+        .padding(10)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.10, 0.10, 0.10))),
+            border: Border {
+                color: Color::from_rgb(0.30, 0.30, 0.30),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        }),
+        row![
+            button(text("Copy").size(13)).on_press(gui::Message::CopyTopologyDetails),
+            button(text("Close").size(13)).on_press(gui::Message::CloseTopologyDetails),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(12)
+    .padding(24);
+
+    let dialog = container(content)
+        .max_width(820)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.14))),
+            border: Border {
+                color: Color::from_rgb(0.38, 0.38, 0.38),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        });
+
+    container(dialog)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+            ..Default::default()
+        })
+        .into()
+}
+
 /// Render the app view for the active tab and overlays.
 fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
     let tab_bar = TabBar::new(gui::Message::TabSelected)
@@ -1022,6 +1133,7 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             &app.topo_view,
             app.num_cores,
             app.topology_group_repeat,
+            &app.topology_classification_label,
         )
         .into(),
         gui::TabId::Configure => tab_configure::view(
@@ -1062,6 +1174,15 @@ fn view(app: &ProcessAffinityApp) -> Element<'_, gui::Message> {
             .push(main_layout)
             .push(view_inaccessible_processes_modal(
                 app.cache.protected_names.clone(),
+            ))
+            .into()
+    } else if app.topology_details_open {
+        iced::widget::Stack::new()
+            .push(main_layout)
+            .push(view_topology_details_modal(
+                app.topology_classification_label.clone(),
+                app.topology_details_report.clone(),
+                app.topology_copy_notice_ticks > 0,
             ))
             .into()
     } else {

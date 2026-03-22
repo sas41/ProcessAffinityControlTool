@@ -73,6 +73,10 @@ pub enum Message {
 
     OpenInaccessibleList,
     CloseInaccessibleList,
+    OpenTopologyDetails,
+    CloseTopologyDetails,
+    CopyTopologyDetails,
+    TopologyDetailsCopied,
 
     // Global messages.
     // Variant payload syntax: this case carries a `TabId` value.

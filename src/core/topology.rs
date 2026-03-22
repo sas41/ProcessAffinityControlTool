@@ -4,9 +4,11 @@ use hwlocality::{
     topology::Topology,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::OnceLock;
+use sysinfo::{CpuRefreshKind, RefreshKind, System};
 
 // Coarse core-class model used by UI/presets.
 // We intentionally keep this small (P/E/Unknown) because hwloc detail varies by CPU/vendor.
@@ -54,11 +56,34 @@ pub struct LogicalProcessorInfo {
 pub struct CacheEntry {
     pub level: u8,
     pub size_bytes: u64,
+    pub slice_sizes: Vec<u64>,
 }
 
 impl CacheEntry {
     pub fn label(&self) -> String {
-        format!("L{}: {}", self.level, format_cache_size(self.size_bytes))
+        self.detailed_label()
+    }
+
+    pub fn detailed_label(&self) -> String {
+        let base = format!("L{}: {}", self.level, format_cache_size(self.size_bytes));
+        if self.slice_sizes.len() <= 1 {
+            return base;
+        }
+
+        let mut sorted = self.slice_sizes.clone();
+        sorted.sort_unstable();
+
+        let details = if sorted.windows(2).all(|w| w[0] == w[1]) {
+            format!("{} x {}", sorted.len(), format_cache_size(sorted[0]))
+        } else {
+            sorted
+                .iter()
+                .map(|s| format_cache_size(*s))
+                .collect::<Vec<_>>()
+                .join(" + ")
+        };
+
+        format!("{base} ({details})")
     }
 }
 
@@ -95,6 +120,31 @@ pub struct TopologyView {
     pub groups: Vec<TopLevelGroup>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopologyClassification {
+    CcdFromDie,
+    CcdFromGroup,
+    HybridKinds,
+    FlatFallback,
+}
+
+impl Default for TopologyClassification {
+    fn default() -> Self {
+        Self::FlatFallback
+    }
+}
+
+impl TopologyClassification {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CcdFromDie => "CCD (Die)",
+            Self::CcdFromGroup => "CCD (Group)",
+            Self::HybridKinds => "Hybrid (P/E)",
+            Self::FlatFallback => "Flat Fallback",
+        }
+    }
+}
+
 // Normalized topology snapshot used across the app.
 
 #[derive(Debug, Default)]
@@ -104,6 +154,7 @@ pub struct CpuTopology {
     core_private_caches: HashMap<usize, Vec<CacheEntry>>,
     /// Shared caches keyed by die logical index (`-1` means package-level fallback).
     ccd_shared_caches: HashMap<isize, Vec<CacheEntry>>,
+    classification: TopologyClassification,
 }
 
 impl CpuTopology {
@@ -156,17 +207,34 @@ impl CpuTopology {
                     Some(0) => CoreKind::Ecore,
                     Some(_) => CoreKind::Pcore,
                 };
-                let freq_mhz: u64 = kind
-                    .infos
-                    .iter()
-                    .find(|i| {
-                        i.name()
-                            .to_str()
-                            .map(|n| n == "FrequencyMaxMHz")
-                            .unwrap_or(false)
-                    })
-                    .and_then(|i| i.value().to_str().ok().and_then(|v| v.parse().ok()))
-                    .unwrap_or(0);
+                let freq_mhz: u64 = {
+                    const KEYS: &[&str] = &[
+                        "FrequencyMaxMHz",
+                        "FrequencyBaseMHz",
+                        "BaseFrequencyMHz",
+                        "FrequencyMHz",
+                        "MaxFrequencyMHz",
+                    ];
+
+                    let mut parsed = 0u64;
+                    for &key in KEYS {
+                        parsed = kind
+                            .infos
+                            .iter()
+                            .find(|info| info.name().to_str().map(|n| n == key).unwrap_or(false))
+                            .and_then(|info| {
+                                info.value()
+                                    .to_str()
+                                    .ok()
+                                    .and_then(|v| v.parse::<u64>().ok())
+                            })
+                            .unwrap_or(0);
+                        if parsed > 0 {
+                            break;
+                        }
+                    }
+                    parsed
+                };
                 for bit in kind.cpuset.iter_set() {
                     let li = usize::from(bit);
                     kind_map.insert(li, core_kind);
@@ -179,96 +247,14 @@ impl CpuTopology {
 
         // Linux may expose more accurate per-CPU max clocks in sysfs; use it first when present.
         let sysfs_max_freq = read_sysfs_max_freq_khz(logical_processors.len());
-
-        // Walk upward from each core and collect private caches (L1/L2) before shared levels.
-        for core_obj in topo.objects_with_type(ObjectType::Core) {
-            let core_li = core_obj.logical_index();
-            let phys_idx = *physical_core_map.get(&core_li).unwrap_or(&core_li);
-            let mut caches: Vec<CacheEntry> = Vec::new();
-
-            let mut cur = core_obj.parent();
-            while let Some(anc) = cur {
-                match anc.object_type() {
-                    ObjectType::Die | ObjectType::Package | ObjectType::Machine => break,
-                    t if t.is_cpu_cache() => {
-                        if let Some(ObjectAttributes::Cache(ca)) = anc.attributes() {
-                            let level = ca.depth() as u8;
-                            if level >= 3 {
-                                break;
-                            }
-                            if let Some(sz) = ca.size() {
-                                caches.push(CacheEntry {
-                                    level,
-                                    size_bytes: sz.get(),
-                                });
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                cur = anc.parent();
-            }
-
-            caches.sort_by_key(|c| c.level);
-            caches.dedup_by_key(|c| c.level);
-            if !caches.is_empty() {
-                topology.core_private_caches.insert(phys_idx, caches);
-            }
-        }
-
-        // Collect shared caches (L3+) and bucket by die/CCD.
-        for cache_type in [
-            ObjectType::L3Cache,
-            ObjectType::L4Cache,
-            ObjectType::L5Cache,
-        ] {
-            for cache_obj in topo.objects_with_type(cache_type) {
-                // `let ... else` destructures-or-early-continues; useful for linear happy-path code.
-                let Some(ObjectAttributes::Cache(ca)) = cache_obj.attributes() else {
-                    continue;
-                };
-                let Some(sz) = ca.size() else { continue };
-                let level = ca.depth() as u8;
-                let size_bytes = sz.get();
-
-                let die_li = Self::find_ancestor_type_static(cache_obj, ObjectType::Die);
-
-                topology
-                    .ccd_shared_caches
-                    .entry(die_li)
-                    .or_default()
-                    .push(CacheEntry { level, size_bytes });
-            }
-        }
-        // Normalize each shared-cache list for deterministic display.
-        for caches in topology.ccd_shared_caches.values_mut() {
-            caches.sort_by_key(|c| c.level);
-            caches.dedup_by_key(|c| c.level);
-        }
-
-        // Some topologies have no Die objects. Keep L3 data under sentinel key `-1`.
-        if topology.ccd_shared_caches.is_empty() {
-            for cache_obj in topo.objects_with_type(ObjectType::L3Cache) {
-                let Some(ObjectAttributes::Cache(ca)) = cache_obj.attributes() else {
-                    continue;
-                };
-                let Some(sz) = ca.size() else { continue };
-                topology
-                    .ccd_shared_caches
-                    .entry(-1)
-                    .or_default()
-                    .push(CacheEntry {
-                        level: ca.depth() as u8,
-                        size_bytes: sz.get(),
-                    });
-            }
-            if let Some(caches) = topology.ccd_shared_caches.get_mut(&-1) {
-                caches.sort_by_key(|c| c.level);
-                caches.dedup_by_key(|c| c.level);
-            }
-        }
+        // Windows power API may expose boost-capable max values in mW/"MHz units".
+        let windows_max_freq = read_windows_max_freq_khz(logical_processors.len());
+        // Fallback for platforms where hwloc doesn't expose max frequency metadata.
+        let os_freq_fallback = read_sysinfo_freq_khz(logical_processors.len());
 
         // Build final logical-CPU records used by selection/grouping helpers.
+        let mut saw_die_domain = false;
+        let mut saw_group_domain = false;
         for obj in &logical_processors {
             let li = obj.logical_index();
 
@@ -285,14 +271,23 @@ impl CpuTopology {
                 .unwrap_or(false);
 
             let kind = kind_map.get(&li).copied().unwrap_or(CoreKind::Unknown);
-            let ccd = Self::find_ancestor_type_static_li(obj, ObjectType::Die);
+            let (ccd, from_group) = Self::resolve_top_cpu_domain(obj);
+            if ccd >= 0 {
+                if from_group {
+                    saw_group_domain = true;
+                } else {
+                    saw_die_domain = true;
+                }
+            }
             let numa_node = Self::find_ancestor_type_static_li(obj, ObjectType::NUMANode);
 
             let max_freq_khz = sysfs_max_freq
                 .get(li)
                 .copied()
                 .filter(|&v| v > 0)
+                .or_else(|| windows_max_freq.get(li).copied().filter(|&v| v > 0))
                 .or_else(|| kind_max_freq_mhz.get(&li).map(|&mhz| mhz * 1000))
+                .or_else(|| os_freq_fallback.get(li).copied().filter(|&v| v > 0))
                 .unwrap_or(0);
 
             topology.processors.push(LogicalProcessorInfo {
@@ -305,6 +300,91 @@ impl CpuTopology {
                 max_freq_khz,
             });
         }
+
+        // Walk upward from each core and collect private caches (L1/L2) before shared levels.
+        for core_obj in topo.objects_with_type(ObjectType::Core) {
+            let core_li = core_obj.logical_index();
+            let phys_idx = *physical_core_map.get(&core_li).unwrap_or(&core_li);
+            let mut caches: Vec<CacheEntry> = Vec::new();
+
+            let mut cur = core_obj.parent();
+            while let Some(anc) = cur {
+                match anc.object_type() {
+                    ObjectType::Die
+                    | ObjectType::Group
+                    | ObjectType::Package
+                    | ObjectType::Machine => break,
+                    t if t.is_cpu_cache() => {
+                        if let Some(ObjectAttributes::Cache(ca)) = anc.attributes() {
+                            let level = ca.depth() as u8;
+                            if level >= 3 {
+                                break;
+                            }
+                            if let Some(sz) = ca.size() {
+                                caches.push(CacheEntry {
+                                    level,
+                                    size_bytes: sz.get(),
+                                    slice_sizes: vec![sz.get()],
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                cur = anc.parent();
+            }
+
+            Self::normalize_cache_levels(&mut caches);
+            if !caches.is_empty() {
+                topology.core_private_caches.insert(phys_idx, caches);
+            }
+        }
+
+        // Collect shared caches (L3+) and bucket by resolved CPU domain.
+        for cache_type in [
+            ObjectType::L3Cache,
+            ObjectType::L4Cache,
+            ObjectType::L5Cache,
+        ] {
+            for cache_obj in topo.objects_with_type(cache_type) {
+                let Some(ObjectAttributes::Cache(ca)) = cache_obj.attributes() else {
+                    continue;
+                };
+                let Some(sz) = ca.size() else { continue };
+                let level = ca.depth() as u8;
+                let size_bytes = sz.get();
+
+                let domain_id = topology.domain_for_cache(cache_obj);
+                topology
+                    .ccd_shared_caches
+                    .entry(domain_id)
+                    .or_default()
+                    .push(CacheEntry {
+                        level,
+                        size_bytes,
+                        slice_sizes: vec![size_bytes],
+                    });
+            }
+        }
+
+        // If no shared caches were discoverable, keep an empty fallback bucket.
+        if topology.ccd_shared_caches.is_empty() {
+            topology.ccd_shared_caches.entry(-1).or_default();
+        }
+
+        for caches in topology.ccd_shared_caches.values_mut() {
+            Self::normalize_cache_levels(caches);
+        }
+
+        topology.classification = if saw_die_domain {
+            TopologyClassification::CcdFromDie
+        } else if saw_group_domain {
+            TopologyClassification::CcdFromGroup
+        } else if topology.is_hybrid() {
+            TopologyClassification::HybridKinds
+        } else {
+            TopologyClassification::FlatFallback
+        };
 
         topology
     }
@@ -340,6 +420,79 @@ impl CpuTopology {
             cur = anc.parent();
         }
         -1
+    }
+
+    fn resolve_top_cpu_domain(obj: &hwlocality::object::TopologyObject) -> (isize, bool) {
+        let die_li = Self::find_ancestor_type_static_li(obj, ObjectType::Die);
+        if die_li >= 0 {
+            return (die_li, false);
+        }
+
+        let group_li = Self::find_ancestor_type_static_li(obj, ObjectType::Group);
+        if group_li >= 0 {
+            return (group_li, true);
+        }
+
+        (-1, false)
+    }
+
+    fn domain_for_cache(&self, cache_obj: &hwlocality::object::TopologyObject) -> isize {
+        if let Some(cpuset) = cache_obj.cpuset() {
+            let mut found: Option<isize> = None;
+            for p in &self.processors {
+                if p.ccd < 0 || !cpuset.is_set(p.logical_index) {
+                    continue;
+                }
+
+                match found {
+                    None => found = Some(p.ccd),
+                    Some(prev) if prev == p.ccd => {}
+                    Some(_) => {
+                        // Cross-domain cache: keep it package-level.
+                        return -1;
+                    }
+                }
+            }
+
+            if let Some(v) = found {
+                return v;
+            }
+        }
+
+        let die_li = Self::find_ancestor_type_static(cache_obj, ObjectType::Die);
+        if die_li >= 0 {
+            return die_li;
+        }
+
+        let group_li = Self::find_ancestor_type_static(cache_obj, ObjectType::Group);
+        if group_li >= 0 {
+            return group_li;
+        }
+
+        -1
+    }
+
+    fn normalize_cache_levels(caches: &mut Vec<CacheEntry>) {
+        let mut by_level: BTreeMap<u8, Vec<u64>> = BTreeMap::new();
+        for cache in caches.iter() {
+            by_level
+                .entry(cache.level)
+                .or_default()
+                .extend(cache.slice_sizes.iter().copied());
+        }
+
+        *caches = by_level
+            .into_iter()
+            .map(|(level, mut slice_sizes)| {
+                slice_sizes.sort_unstable();
+                let size_bytes = slice_sizes.iter().sum();
+                CacheEntry {
+                    level,
+                    size_bytes,
+                    slice_sizes,
+                }
+            })
+            .collect();
     }
 
     // Query helpers used by presets and filtering.
@@ -417,6 +570,10 @@ impl CpuTopology {
             self.build_flat_group()
         };
         TopologyView { groups }
+    }
+
+    pub fn classification_label(&self) -> &'static str {
+        self.classification.label()
     }
 
     fn shared_caches_for_die(&self, die_li: isize) -> Vec<CacheEntry> {
@@ -576,6 +733,76 @@ fn read_sysfs_max_freq_khz(num_cpus: usize) -> Vec<u64> {
     }
 }
 
+fn read_sysinfo_freq_khz(num_cpus: usize) -> Vec<u64> {
+    fn from_system(system: &System, num_cpus: usize) -> Vec<u64> {
+        let mut result = vec![0u64; num_cpus];
+        let cpus = system.cpus();
+        for (i, out) in result.iter_mut().enumerate() {
+            let mhz = cpus.get(i).map(|c| c.frequency()).unwrap_or(0);
+            if mhz > 0 {
+                *out = mhz * 1000;
+            }
+        }
+        result
+    }
+
+    let cpu_refresh = CpuRefreshKind::nothing().with_cpu_usage().with_frequency();
+
+    let mut system = System::new_with_specifics(RefreshKind::nothing().with_cpu(cpu_refresh));
+    system.refresh_cpu_specifics(cpu_refresh);
+    system.refresh_cpu_specifics(cpu_refresh);
+
+    let result = from_system(&system, num_cpus);
+    if result.iter().any(|&v| v > 0) {
+        return result;
+    }
+
+    let mut system = System::new_with_specifics(RefreshKind::everything());
+    system.refresh_cpu_specifics(cpu_refresh);
+    system.refresh_cpu_specifics(cpu_refresh);
+    from_system(&system, num_cpus)
+}
+
+#[cfg(target_os = "windows")]
+fn read_windows_max_freq_khz(num_cpus: usize) -> Vec<u64> {
+    use windows::Win32::System::Power::{
+        CallNtPowerInformation, ProcessorInformation, POWER_INFORMATION_LEVEL,
+        PROCESSOR_POWER_INFORMATION,
+    };
+
+    let mut result = vec![0u64; num_cpus];
+    let mut info = vec![PROCESSOR_POWER_INFORMATION::default(); num_cpus];
+    let out_size = (std::mem::size_of::<PROCESSOR_POWER_INFORMATION>() * info.len()) as u32;
+
+    let status = unsafe {
+        CallNtPowerInformation(
+            POWER_INFORMATION_LEVEL(ProcessorInformation.0),
+            None,
+            0,
+            Some(info.as_mut_ptr() as *mut core::ffi::c_void),
+            out_size,
+        )
+    };
+
+    if status.0 == 0 {
+        for (i, p) in info.iter().enumerate() {
+            // Some systems report base clock in `MaxMhz` and expose a higher
+            // turbo-capable ceiling through `MhzLimit`.
+            let mhz = u64::from(p.MaxMhz).max(u64::from(p.MhzLimit));
+            if mhz > 0 {
+                result[i] = mhz * 1000;
+            }
+        }
+    }
+
+    result
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_windows_max_freq_khz(num_cpus: usize) -> Vec<u64> {
+    vec![0u64; num_cpus]
+}
+
 // Small formatting helpers for human-readable UI labels.
 
 pub fn format_cache_size(bytes: u64) -> String {
@@ -608,79 +835,132 @@ pub fn get_topology() -> &'static CpuTopology {
 
 /// Builds a human-readable topology report for diagnostics.
 pub fn topology_report() -> String {
-    let topo = CpuTopology::discover();
-    let view = topo.topology_view();
-    let mut out = String::new();
+    get_topology().detailed_report()
+}
 
-    let _ = writeln!(&mut out, "=== Topology Report ===");
-    let _ = writeln!(&mut out, "logical processors: {}", topo.processors().len());
-    let _ = writeln!(&mut out, "top-level groups   : {}", view.groups.len());
-    let _ = writeln!(&mut out);
+pub fn topology_classification_label() -> &'static str {
+    get_topology().classification_label()
+}
 
-    for (gi, group) in view.groups.iter().enumerate() {
-        let group_max_khz = group
-            .physical_cores
-            .iter()
-            .map(|c| c.max_freq_khz)
-            .max()
-            .unwrap_or(0);
+pub fn topology_details_report() -> String {
+    get_topology().detailed_report()
+}
 
-        let _ = writeln!(&mut out, "Group #{}: {}", gi, group.label);
-        let _ = writeln!(&mut out, "  max freq: {}", format_freq_ghz(group_max_khz));
+impl CpuTopology {
+    pub fn detailed_report(&self) -> String {
+        let view = self.topology_view();
+        let mut out = String::new();
 
-        if group.shared_caches.is_empty() {
-            let _ = writeln!(&mut out, "  shared cache: <none>");
-        } else {
-            let shared = group
-                .shared_caches
-                .iter()
-                .map(|c| format!("L{} {}", c.level, format_cache_size(c.size_bytes)))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let _ = writeln!(&mut out, "  shared cache: {}", shared);
-        }
+        let _ = writeln!(&mut out, "=== Topology Report ===");
+        let _ = writeln!(
+            &mut out,
+            "classification      : {}",
+            self.classification_label()
+        );
+        let _ = writeln!(
+            &mut out,
+            "logical processors  : {}",
+            self.processors().len()
+        );
+        let _ = writeln!(&mut out, "top-level groups   : {}", view.groups.len());
+        let _ = writeln!(
+            &mut out,
+            "ccd groups         : {}",
+            self.get_ccd_groups().len()
+        );
+        let _ = writeln!(
+            &mut out,
+            "numa groups        : {}",
+            self.get_numa_groups().len()
+        );
+        let _ = writeln!(&mut out);
 
-        for core in &group.physical_cores {
-            let threads = core
-                .threads
-                .iter()
-                .map(|t| {
-                    format!(
-                        "T{}({})",
-                        t.logical_index,
-                        match t.kind {
-                            CoreKind::Pcore => "P",
-                            CoreKind::Ecore => "E",
-                            CoreKind::Unknown => "?",
-                        }
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            let private = if core.private_caches.is_empty() {
-                "<none>".to_string()
-            } else {
-                core.private_caches
-                    .iter()
-                    .map(|c| format!("L{} {}", c.level, format_cache_size(c.size_bytes)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+        let _ = writeln!(&mut out, "-- Logical Processors --");
+        for p in self.processors() {
+            let kind = match p.kind {
+                CoreKind::Pcore => "P",
+                CoreKind::Ecore => "E",
+                CoreKind::Unknown => "?",
             };
-
             let _ = writeln!(
                 &mut out,
-                "    C{}: freq={} threads=[{}] private=[{}]",
-                core.physical_index,
-                format_freq_ghz(core.max_freq_khz),
-                threads,
-                private
+                "L{}: C{} kind={} domain={} numa={} ht={} max={}",
+                p.logical_index,
+                p.physical_core_index,
+                kind,
+                p.ccd,
+                p.numa_node,
+                p.is_hyperthread_sibling,
+                format_freq_ghz(p.max_freq_khz)
             );
         }
-
         let _ = writeln!(&mut out);
-    }
 
-    out
+        for (gi, group) in view.groups.iter().enumerate() {
+            let group_max_khz = group
+                .physical_cores
+                .iter()
+                .map(|c| c.max_freq_khz)
+                .max()
+                .unwrap_or(0);
+
+            let _ = writeln!(&mut out, "Group #{}: {}", gi, group.label);
+            let _ = writeln!(&mut out, "  max freq: {}", format_freq_ghz(group_max_khz));
+
+            if group.shared_caches.is_empty() {
+                let _ = writeln!(&mut out, "  shared cache: <none>");
+            } else {
+                let shared = group
+                    .shared_caches
+                    .iter()
+                    .map(|c| c.detailed_label())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let _ = writeln!(&mut out, "  shared cache: {}", shared);
+            }
+
+            for core in &group.physical_cores {
+                let threads = core
+                    .threads
+                    .iter()
+                    .map(|t| {
+                        format!(
+                            "T{}({})",
+                            t.logical_index,
+                            match t.kind {
+                                CoreKind::Pcore => "P",
+                                CoreKind::Ecore => "E",
+                                CoreKind::Unknown => "?",
+                            }
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let private = if core.private_caches.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    core.private_caches
+                        .iter()
+                        .map(|c| c.detailed_label())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+
+                let _ = writeln!(
+                    &mut out,
+                    "    C{}: freq={} threads=[{}] private=[{}]",
+                    core.physical_index,
+                    format_freq_ghz(core.max_freq_khz),
+                    threads,
+                    private
+                );
+            }
+
+            let _ = writeln!(&mut out);
+        }
+
+        out
+    }
 }
 
 // Basic invariants for discovery and formatting.

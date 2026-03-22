@@ -17,6 +17,7 @@ use crate::gui::{AppCache, Message as AppMessage};
 pub enum Message {
     ToggleScanner,
     OpenInaccessibleList,
+    OpenTopologyDetails,
 }
 
 // `'a` is a lifetime parameter (roughly: how long borrowed data stays valid),
@@ -26,6 +27,7 @@ pub fn view<'a>(
     topo_view: &'a TopologyView,
     num_cores: usize,
     topology_group_repeat: usize,
+    topology_classification: &'a str,
 ) -> container::Container<'a, AppMessage> {
     // Button colors encode runtime state at a glance.
     const GREEN: Color = Color::from_rgb(0.13, 0.56, 0.30);
@@ -126,6 +128,21 @@ pub fn view<'a>(
     ]
     .align_y(Alignment::Center);
 
+    let classification_btn = button(
+        text(format!("Topology: {topology_classification}"))
+            .size(12)
+            .color(Color::from_rgb(0.62, 0.78, 1.0)),
+    )
+    .on_press(AppMessage::StatusMessage(Message::OpenTopologyDetails))
+    .padding([2, 6])
+    .style(|_, _| button::Style {
+        background: None,
+        text_color: Color::from_rgb(0.62, 0.78, 1.0),
+        border: iced::Border::default(),
+        shadow: iced::Shadow::default(),
+        snap: false,
+    });
+
     let cpu_bar = row![
         text("CPU Total:").size(14).font(iced::Font {
             weight: iced::font::Weight::Bold,
@@ -135,6 +152,8 @@ pub fn view<'a>(
         // `a..=b` is an inclusive range (`b` is included).
         progress_bar(0.0..=100.0, cache.cpu_stats.global).length(Length::Fixed(300.0)),
         text(format!("{:.0}%", cache.cpu_stats.global)).size(13),
+        Space::new().width(Length::Fill),
+        classification_btn,
     ]
     .align_y(Alignment::Center)
     .spacing(10);
