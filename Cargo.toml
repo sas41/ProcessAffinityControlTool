@@ -10,7 +10,7 @@ iced_fonts = { version = "*", features = ["bootstrap"] }
 tray-icon = { version = "*", default-features = false }
 image = { version = "*", default-features = true, features = ["png"] }
 sysinfo = { version = "*", features = ["default"] }
-hwlocality = { version = "1.0.0-alpha.11", features = ["hwloc-latest", "vendored"] }
+hwlocality = { version = "1.0.0-alpha.12", features = ["hwloc-latest", "vendored"] }
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 rfd = "*"
